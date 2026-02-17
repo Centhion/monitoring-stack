@@ -344,15 +344,10 @@ Use agent prompt from: `.claude/agents/project/alert-rule-auditor.md`
 
 ---
 
-## SSH Authentication
+## Git Authentication
 
-This template uses **1Password SSH Agent** for Git authentication.
+This project uses **HTTPS** remotes with Windows Credential Manager for Git authentication.
 
-- **Documentation**: See @docs/SSH_AUTHENTICATION.md for setup details
-- **Never create new SSH keys** - use existing 1Password setup
-- **Always use SSH remotes**: `git@github.com:username/repo.git`
-
-To verify authentication:
-```bash
-ssh -T git@github.com
-```
+- **Remote URL**: `https://github.com/Centhion/Monitoring_Dashboarding.git`
+- **Always use HTTPS remotes**: `https://github.com/username/repo.git`
+- Credentials are cached by the Windows Git Credential Manager

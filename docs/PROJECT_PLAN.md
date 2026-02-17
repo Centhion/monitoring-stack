@@ -10,7 +10,7 @@
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| Phase 0: Project Setup | In Progress | Template hydration and repo configuration |
+| Phase 0: Project Setup | Completed | Template hydration and repo configuration |
 | Phase 1: Alloy Agent Configs | Pending | Windows and Linux agent configurations |
 | Phase 2: Backend Configs (Prometheus + Loki) | Pending | Server-side metric and log storage configs |
 | Phase 3: Alerting Rules and Routing | Pending | SCOM parity alerts, Alertmanager routing, Teams integration |
@@ -26,7 +26,7 @@
 
 **Goal**: Hydrate the Golden Template with project-specific configuration, documentation, and agent setup.
 
-**Status**: In Progress
+**Status**: Completed
 
 ### Tasks
 
@@ -44,9 +44,9 @@
 
 ### Human Actions Required
 
-- [x] Set up Git remote (git@github.com:Centhion/Monitoring_Dashboarding.git)
-- [ ] Push initial commit
-- [ ] Verify SSH authentication works (`ssh -T git@github.com`)
+- [x] Set up Git remote (https://github.com/Centhion/Monitoring_Dashboarding.git)
+- [x] Push initial commit
+- [x] Verify Git authentication (HTTPS with credential manager)
 
 ---
 
@@ -202,9 +202,9 @@
 
 ### Prerequisites
 
-- [x] Set up Git remote (git@github.com:Centhion/Monitoring_Dashboarding.git)
-- [ ] Push initial commit
-- [ ] Verify SSH authentication
+- [x] Set up Git remote (https://github.com/Centhion/Monitoring_Dashboarding.git)
+- [x] Push initial commit
+- [x] Verify Git authentication (HTTPS)
 - [ ] Create Teams Incoming Webhook for monitoring channel
 - [ ] Provide SCOM monitor export/list for alert parity audit
 
