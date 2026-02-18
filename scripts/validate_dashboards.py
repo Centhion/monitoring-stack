@@ -50,7 +50,7 @@ KNOWN_RECORDING_RULES = {
     "instance:windows_disk_io_utilization:ratio",
     "instance:windows_network_bytes:rate5m",
     "instance:windows_services_not_running:count",
-    "instance:windows_uptime:days",
+    "instance:windows_uptime:seconds",
     "instance:linux_cpu_utilization:ratio",
     "instance:linux_memory_utilization:ratio",
     "instance:linux_disk_free:ratio",

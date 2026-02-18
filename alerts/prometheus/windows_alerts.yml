@@ -117,7 +117,7 @@ groups:
       # Server Uptime / Reboot Detection
       # -----------------------------------------------------------------
       - alert: WindowsServerReboot
-        expr: instance:windows_uptime:days < 600
+        expr: instance:windows_uptime:seconds < 600
         for: 1m
         labels:
           severity: info

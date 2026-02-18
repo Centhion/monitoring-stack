@@ -64,12 +64,12 @@ Recording rules are defined in `configs/prometheus/recording_rules.yml`. The nam
 | Recording Rule | Used By | Raw Metric Source |
 |----------------|---------|-------------------|
 | `instance:windows_cpu_utilization:ratio` | Windows Overview | `windows_cpu_time_total` |
-| `instance:windows_memory_utilization:ratio` | Windows Overview | `windows_os_physical_memory_free_bytes` / `windows_cs_physical_memory_bytes` |
+| `instance:windows_memory_utilization:ratio` | Windows Overview | `windows_memory_physical_free_bytes` / `windows_memory_physical_total_bytes` |
 | `instance:windows_disk_free:ratio` | Windows Overview | `windows_logical_disk_free_bytes` / `windows_logical_disk_size_bytes` |
 | `instance:windows_disk_io_utilization:ratio` | Windows Overview | `windows_logical_disk_idle_seconds_total` |
 | `instance:windows_network_bytes:rate5m` | Windows Overview | `windows_net_bytes_total` |
 | `instance:windows_services_not_running:count` | Windows Overview | `windows_service_state` |
-| `instance:windows_uptime:days` | Windows Overview | `windows_os_time` - `windows_os_boot_time` |
+| `instance:windows_uptime:seconds` | Windows Overview | `windows_time_current_timestamp_seconds` - `windows_system_boot_time_timestamp` |
 | `instance:linux_cpu_utilization:ratio` | Linux Overview | `node_cpu_seconds_total` |
 | `instance:linux_memory_utilization:ratio` | Linux Overview | `node_memory_MemAvailable_bytes` / `node_memory_MemTotal_bytes` |
 | `instance:linux_disk_free:ratio` | Linux Overview | `node_filesystem_avail_bytes` / `node_filesystem_size_bytes` |

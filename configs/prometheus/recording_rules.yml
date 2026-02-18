@@ -32,12 +32,13 @@ groups:
           )
 
       # Memory utilization as a percentage.
+      # Alloy v1.13 moved these from os/cs collectors to the memory collector.
       - record: instance:windows_memory_utilization:ratio
         expr: |
           1 - (
-            windows_os_physical_memory_free_bytes
+            windows_memory_physical_free_bytes
             /
-            windows_cs_physical_memory_bytes
+            windows_memory_physical_total_bytes
           )
 
       # Logical disk free space percentage per volume.
@@ -66,10 +67,11 @@ groups:
             windows_service_state{state!="running"} == 1
           )
 
-      # System uptime in days.
-      - record: instance:windows_uptime:days
+      # System uptime in seconds (dashboard divides by 86400 for days display).
+      # Alloy v1.13 renamed these from os collector to system/time collectors.
+      - record: instance:windows_uptime:seconds
         expr: |
-          windows_os_time - windows_os_boot_time
+          windows_time_current_timestamp_seconds - windows_system_boot_time_timestamp
 
   # ---------------------------------------------------------------------------
   # Linux Server Recording Rules

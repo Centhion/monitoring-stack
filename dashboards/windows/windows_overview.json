@@ -193,7 +193,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "avg(instance:windows_uptime:days{environment=~\"$environment\", datacenter=~\"$datacenter\", hostname=~\"$hostname\", role=~\"$role\"}) / 86400",
+          "expr": "avg(instance:windows_uptime:seconds{environment=~\"$environment\", datacenter=~\"$datacenter\", hostname=~\"$hostname\", role=~\"$role\"}) / 86400",
           "legendFormat": "Uptime",
           "range": true,
           "refId": "A"
