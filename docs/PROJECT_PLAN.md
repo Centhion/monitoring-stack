@@ -16,6 +16,7 @@
 | Phase 3: Alerting Rules and Routing | Completed | 8 tasks: 46 alert rules, Alertmanager routing + Teams template, Grafana notifiers, runbooks |
 | Phase 4: Grafana Dashboards | Completed | 4 dashboards (Windows, Linux, Infra Overview, Log Explorer) + customization guide |
 | Phase 5: Validation Tooling | Completed | 3 validators + runner, 12/12 tests passing, requirements.txt, docs |
+| Phase 5.5: Docker Compose PoC | In Progress | Local testing stack via Docker Desktop (pre-K8s validation) |
 | Phase 6: Mimir Migration | Pending | Long-term metrics storage (when ready to scale) |
 
 **Status Key**: Pending | In Progress | Completed | Blocked
@@ -228,6 +229,38 @@
 ### Human Actions Required (Deferred Until CI Pipeline Ready)
 
 - [ ] Integrate validation into CI/CD pipeline
+
+---
+
+## Phase 5.5: Docker Compose PoC Environment
+
+**Goal**: Spin up the full monitoring stack locally via Docker Desktop to validate configs, dashboards, alert routing, and the Alloy-to-backend data pipeline before deploying to Kubernetes.
+
+**Status**: In Progress
+
+**Resource Budget**: ~2 GB RAM total (memory-limited containers for developer workstations)
+
+### Tasks
+
+- [ ] 1. Create `docker-compose.yml` with Prometheus, Loki, Alertmanager, Grafana -- volume mounts, memory limits, health checks
+- [ ] 2. Create `docker-compose.override.yml` for local dev (debug ports, verbose logging)
+- [ ] 3. Create `.dockerignore` to exclude non-essential files
+- [ ] 4. Create local Alloy config for Windows host pointing at Docker stack -- `configs/alloy/local/`
+- [ ] 5. Create `scripts/poc_setup.py` for one-command startup with health validation
+- [ ] 6. Create `docs/LOCAL_TESTING.md` step-by-step guide
+- [ ] 7. Update PROJECT_PLAN.md to mark phase complete
+
+### Risks
+
+- Memory pressure on developer workstation (mitigated with container limits)
+- Alloy Windows binary collector names may differ from documentation (validate during local testing)
+- Teams webhook requires real URL for notification testing (fallback: stdout logging)
+
+### Human Actions Required
+
+- [ ] Ensure Docker Desktop is installed and running
+- [ ] Download Grafana Alloy Windows binary (optional, for end-to-end testing)
+- [ ] Create Teams webhook URL (optional, alerts log to stdout as fallback)
 
 ---
 

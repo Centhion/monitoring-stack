@@ -1,0 +1,224 @@
+# =============================================================================
+# Docker Compose -- Enterprise Monitoring Stack (PoC / Local Testing)
+# =============================================================================
+# Spins up the full observability backend for local validation before
+# deploying to Kubernetes. Services are memory-limited to run alongside
+# developer workloads on Docker Desktop (~2 GB total).
+#
+# Usage:
+#   docker compose up -d          Start all services
+#   docker compose ps             Check health status
+#   docker compose logs -f        Stream all logs
+#   docker compose down -v        Stop and remove volumes
+#
+# After startup:
+#   Grafana:      http://localhost:3000  (admin / admin)
+#   Prometheus:   http://localhost:9090
+#   Alertmanager: http://localhost:9093
+#   Loki:         http://localhost:3100  (API only)
+#
+# Alloy is NOT included here -- it runs on monitored servers (or your
+# Windows host for testing). See configs/alloy/local/ for a local config.
+# =============================================================================
+
+services:
+  # -------------------------------------------------------------------------
+  # Prometheus -- Metrics Storage and Rule Evaluation
+  # -------------------------------------------------------------------------
+  # Receives metrics from Alloy via remote_write and evaluates alerting
+  # and recording rules. Scrapes itself and the other stack components.
+  prometheus:
+    image: prom/prometheus:v2.53.4
+    container_name: mon-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      # Main config
+      - ./configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Recording rules and alert rules under /etc/prometheus/rules/
+      - ./configs/prometheus/recording_rules.yml:/etc/prometheus/rules/recording_rules.yml:ro
+      - ./alerts/prometheus/windows_alerts.yml:/etc/prometheus/rules/windows_alerts.yml:ro
+      - ./alerts/prometheus/linux_alerts.yml:/etc/prometheus/rules/linux_alerts.yml:ro
+      - ./alerts/prometheus/infra_alerts.yml:/etc/prometheus/rules/infra_alerts.yml:ro
+      - ./alerts/prometheus/role_alerts.yml:/etc/prometheus/rules/role_alerts.yml:ro
+      # Persistent TSDB storage
+      - prometheus_data:/prometheus/data
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus/data"
+      - "--storage.tsdb.retention.time=15d"
+      - "--storage.tsdb.retention.size=5GB"
+      - "--storage.tsdb.wal-compression"
+      - "--web.enable-remote-write-receiver"
+      - "--web.enable-lifecycle"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    environment:
+      # Override defaults for local Docker networking
+      ALERTMANAGER_HOST: alertmanager
+      ALERTMANAGER_PORT: "9093"
+      LOKI_HOST: loki
+      LOKI_PORT: "3100"
+      GRAFANA_HOST: grafana
+      GRAFANA_PORT: "3000"
+      CLUSTER_NAME: local-poc
+      POD_NAME: prometheus-local
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - monitoring
+
+  # -------------------------------------------------------------------------
+  # Loki -- Log Aggregation
+  # -------------------------------------------------------------------------
+  # Receives log entries from Alloy via push API. Stores logs on local
+  # filesystem with TSDB indexing. Retention set to 7 days for PoC.
+  loki:
+    image: grafana/loki:3.4.2
+    container_name: mon-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./configs/loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+    command:
+      - "-config.file=/etc/loki/loki.yml"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - monitoring
+
+  # -------------------------------------------------------------------------
+  # Alertmanager -- Alert Routing and Notification
+  # -------------------------------------------------------------------------
+  # Receives alerts from Prometheus, deduplicates, groups, and routes
+  # them to Teams webhook and email channels.
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: mon-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./configs/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./configs/alertmanager/templates/teams.tmpl:/etc/alertmanager/templates/teams.tmpl:ro
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.listen-address=:9093"
+    environment:
+      # Teams webhook -- set a real URL in .env for notification testing.
+      # Without it, Alertmanager logs delivery failures (non-fatal).
+      TEAMS_WEBHOOK_URL: "${TEAMS_WEBHOOK_URL:-https://example.com/webhook/placeholder}"
+      SMTP_HOST: "${SMTP_HOST:-smtp.example.com}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_FROM: "${SMTP_FROM:-monitoring@example.com}"
+      ALERT_EMAIL_TO: "${ALERT_EMAIL_TO:-ops-team@example.com}"
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9093/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - monitoring
+
+  # -------------------------------------------------------------------------
+  # Grafana -- Dashboards, Exploration, and Alerting UI
+  # -------------------------------------------------------------------------
+  # Provisioned with datasources, dashboards, and notification policies
+  # from config files. No manual setup required after startup.
+  grafana:
+    image: grafana/grafana:11.5.2
+    container_name: mon-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # Datasource provisioning (Prometheus + Loki)
+      - ./configs/grafana/datasources/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      # Dashboard provisioning config (points to dashboard directories)
+      - ./configs/grafana/dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      # Notification/contact point provisioning
+      - ./configs/grafana/notifiers/notifiers.yml:/etc/grafana/provisioning/notifiers/notifiers.yml:ro
+      # Dashboard JSON files mounted to the paths expected by the provisioning config
+      - ./dashboards/windows:/var/lib/grafana/dashboards/windows:ro
+      - ./dashboards/linux:/var/lib/grafana/dashboards/linux:ro
+      - ./dashboards/overview:/var/lib/grafana/dashboards/overview:ro
+      # Persistent Grafana database (users, preferences, annotations)
+      - grafana_data:/var/lib/grafana
+    environment:
+      # Default admin credentials for local testing
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      # Disable login form requirement for faster local iteration
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Allow embedding for development
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      # Disable update checks and analytics
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # Environment variable expansion in provisioning files
+      PROMETHEUS_URL: "http://prometheus:9090"
+      LOKI_URL: "http://loki:3100"
+      TEAMS_WEBHOOK_URL: "${TEAMS_WEBHOOK_URL:-https://example.com/webhook/placeholder}"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    networks:
+      - monitoring
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+  monitoring:
+    driver: bridge
+    name: monitoring-network
+
+# ---------------------------------------------------------------------------
+# Named Volumes
+# Persistent storage survives container restarts. Use `docker compose down -v`
+# to delete volumes and start fresh.
+# ---------------------------------------------------------------------------
+volumes:
+  prometheus_data:
+    name: mon-prometheus-data
+  loki_data:
+    name: mon-loki-data
+  grafana_data:
+    name: mon-grafana-data

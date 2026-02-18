@@ -1,0 +1,49 @@
+# =============================================================================
+# Docker Compose Override -- Local Development Conveniences
+# =============================================================================
+# This file is automatically merged with docker-compose.yml when running
+# `docker compose up`. It adds development-friendly settings that should
+# NOT be used in production.
+#
+# To run WITHOUT overrides (production-like):
+#   docker compose -f docker-compose.yml up -d
+#
+# To run WITH overrides (default):
+#   docker compose up -d
+# =============================================================================
+
+services:
+  prometheus:
+    # Enable verbose logging for debugging rule evaluation
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus/data"
+      - "--storage.tsdb.retention.time=15d"
+      - "--storage.tsdb.retention.size=5GB"
+      - "--storage.tsdb.wal-compression"
+      - "--web.enable-remote-write-receiver"
+      - "--web.enable-lifecycle"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--log.level=info"
+
+  loki:
+    command:
+      - "-config.file=/etc/loki/loki.yml"
+      - "-log.level=info"
+
+  alertmanager:
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.listen-address=:9093"
+      - "--log.level=info"
+
+  grafana:
+    environment:
+      # More verbose logging for provisioning troubleshooting
+      GF_LOG_LEVEL: info
+      # Enable Grafana Explore for ad-hoc PromQL and LogQL queries
+      GF_EXPLORE_ENABLED: "true"
+      # Show helpful tooltips and documentation links
+      GF_HELP_ENABLED: "true"

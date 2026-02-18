@@ -1,0 +1,23 @@
+# Agent configs are deployed to servers, not used in Docker Compose
+configs/alloy/
+
+# Development and CI files
+.claude/
+.git/
+.gitignore
+skills/
+tests/
+scripts/
+docs/
+
+# Environment and secrets
+.env
+*.local.*
+
+# Editor and OS artifacts
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+nul

@@ -27,6 +27,11 @@ cd Monitoring_Dashboarding
 # Set up environment
 cp .env.example .env
 # Edit .env with your environment-specific values (webhook URLs, endpoints, etc.)
+
+# Start the full stack locally via Docker Compose
+python scripts/poc_setup.py
+
+# Open Grafana at http://localhost:3000 (admin / admin)
 ```
 
 ## Structure
@@ -63,6 +68,7 @@ cp .env.example .env
 - See `docs/ALERT_RUNBOOKS.md` for alert investigation and remediation procedures
 - See `docs/DASHBOARD_GUIDE.md` for dashboard customization and creation
 - See `docs/VALIDATION_TOOLING.md` for config validation scripts and CI integration
+- See `docs/LOCAL_TESTING.md` for Docker Compose PoC setup and Alloy local testing
 
 ## Development
 
