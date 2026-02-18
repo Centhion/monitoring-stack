@@ -1,0 +1,121 @@
+# =============================================================================
+# Prometheus Server Configuration
+# =============================================================================
+# Core Prometheus server config for the Enterprise Monitoring Platform.
+# Prometheus receives metrics from Grafana Alloy agents via remote_write
+# and evaluates alerting/recording rules.
+#
+# Deployment: Kubernetes pod with persistent volume for TSDB storage.
+# This config is mounted as a ConfigMap.
+#
+# Environment-specific values should be set via Kubernetes ConfigMap
+# substitution or Helm templating before deployment.
+# =============================================================================
+
+global:
+  # How frequently Prometheus evaluates rules (alerting + recording).
+  # 30s balances responsiveness with resource usage.
+  evaluation_interval: 30s
+
+  # Default scrape interval for any scrape_configs defined here.
+  # Alloy agents push via remote_write, so this mainly applies to
+  # Prometheus self-monitoring and any direct scrape targets.
+  scrape_interval: 30s
+
+  # Timeout for individual scrape requests.
+  scrape_timeout: 15s
+
+  # External labels applied to all time series and alerts sent to
+  # external systems (federation, Alertmanager, remote_write).
+  external_labels:
+    cluster: "${CLUSTER_NAME:-monitoring}"
+    prometheus_replica: "${POD_NAME:-prometheus-0}"
+
+# ---------------------------------------------------------------------------
+# Rule Files
+# Prometheus loads alerting and recording rules from these paths.
+# In Kubernetes, these are mounted from ConfigMaps.
+# ---------------------------------------------------------------------------
+rule_files:
+  - "/etc/prometheus/rules/recording_rules.yml"
+  - "/etc/prometheus/rules/windows_alerts.yml"
+  - "/etc/prometheus/rules/linux_alerts.yml"
+  - "/etc/prometheus/rules/infra_alerts.yml"
+  - "/etc/prometheus/rules/role_alerts.yml"
+
+# ---------------------------------------------------------------------------
+# Alertmanager Configuration
+# Prometheus sends firing alerts to Alertmanager for routing and notification.
+# ---------------------------------------------------------------------------
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - "${ALERTMANAGER_HOST:-alertmanager}:${ALERTMANAGER_PORT:-9093}"
+      # Timeout for sending alerts to Alertmanager.
+      timeout: 10s
+
+# ---------------------------------------------------------------------------
+# Scrape Configurations
+# Alloy agents push metrics via remote_write (not scraped by Prometheus).
+# These scrape_configs are only for Prometheus self-monitoring and any
+# infrastructure targets that expose /metrics directly.
+# ---------------------------------------------------------------------------
+scrape_configs:
+  # Prometheus monitors itself for operational health.
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+    metrics_path: "/metrics"
+    scrape_interval: 30s
+
+  # Alertmanager metrics for monitoring the alerting pipeline.
+  - job_name: "alertmanager"
+    static_configs:
+      - targets:
+          - "${ALERTMANAGER_HOST:-alertmanager}:${ALERTMANAGER_PORT:-9093}"
+    metrics_path: "/metrics"
+    scrape_interval: 30s
+
+  # Loki metrics for monitoring the log aggregation pipeline.
+  - job_name: "loki"
+    static_configs:
+      - targets:
+          - "${LOKI_HOST:-loki}:${LOKI_PORT:-3100}"
+    metrics_path: "/metrics"
+    scrape_interval: 30s
+
+  # Grafana metrics for monitoring the visualization layer.
+  - job_name: "grafana"
+    static_configs:
+      - targets:
+          - "${GRAFANA_HOST:-grafana}:${GRAFANA_PORT:-3000}"
+    metrics_path: "/metrics"
+    scrape_interval: 60s
+
+# ---------------------------------------------------------------------------
+# Remote Write Receiver
+# Enables Prometheus to accept remote_write requests from Alloy agents.
+# This is the primary ingestion path for all server metrics.
+#
+# NOTE: This feature must be enabled via the --web.enable-remote-write-receiver
+# command-line flag when starting Prometheus.
+# ---------------------------------------------------------------------------
+# The remote write receiver is enabled via CLI flag, not in this config file.
+# Add to Prometheus startup args:
+#   --web.enable-remote-write-receiver
+#   --storage.tsdb.retention.time=30d
+#   --storage.tsdb.retention.size=50GB
+
+# ---------------------------------------------------------------------------
+# Storage Configuration
+# Set via command-line flags (not YAML config). Document here for reference.
+#
+# Recommended flags:
+#   --storage.tsdb.path=/prometheus/data       # TSDB data directory
+#   --storage.tsdb.retention.time=30d          # Keep 30 days of data
+#   --storage.tsdb.retention.size=50GB         # Cap storage at 50GB
+#   --storage.tsdb.wal-compression             # Compress WAL for disk savings
+#   --storage.tsdb.min-block-duration=2h       # Default block compaction
+#   --storage.tsdb.max-block-duration=36h      # Max block before compaction
+# ---------------------------------------------------------------------------

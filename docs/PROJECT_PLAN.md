@@ -12,10 +12,10 @@
 |-------|--------|-------|
 | Phase 0: Project Setup | Completed | Template hydration and repo configuration |
 | Phase 1: Alloy Agent Configs | Completed | 13 configs: common (3), Windows base+4 roles (6), Linux base+docker (3), deployment guide (1) |
-| Phase 2: Backend Configs (Prometheus + Loki) | Pending | Server-side metric and log storage configs |
-| Phase 3: Alerting Rules and Routing | Pending | SCOM parity alerts, Alertmanager routing, Teams integration |
-| Phase 4: Grafana Dashboards | Pending | Dashboard JSON definitions and provisioning |
-| Phase 5: Validation Tooling | Pending | Python scripts for config linting and testing |
+| Phase 2: Backend Configs (Prometheus + Loki) | Completed | 6 tasks: Prometheus config + recording rules, Loki config, Grafana provisioning, docs |
+| Phase 3: Alerting Rules and Routing | Completed | 8 tasks: 46 alert rules, Alertmanager routing + Teams template, Grafana notifiers, runbooks |
+| Phase 4: Grafana Dashboards | In Progress | 5 tasks: Windows/Linux/Overview/Log Explorer dashboards, customization guide |
+| Phase 5: Validation Tooling | Pending | 7 tasks: Alloy/Prometheus/Dashboard validators, runner, tests, docs |
 | Phase 6: Mimir Migration | Pending | Long-term metrics storage (when ready to scale) |
 
 **Status Key**: Pending | In Progress | Completed | Blocked
@@ -102,19 +102,27 @@
 
 ## Phase 2: Backend Configurations (Prometheus + Loki)
 
-**Goal**: Configure Prometheus and Loki server-side settings including retention, storage, and recording rules.
+**Goal**: Production-ready server-side configs for Prometheus and Loki, including retention policies, recording rules, ingestion limits, and Grafana provisioning.
 
-**Status**: Pending
+**Status**: Completed
 
 ### Tasks
 
-- [ ] Create Prometheus server configuration (scrape configs, retention, storage)
-- [ ] Create Prometheus recording rules for common aggregations
-- [ ] Create Loki server configuration (storage, retention, limits)
-- [ ] Define log parsing pipelines in Loki (structured metadata extraction)
-- [ ] Document backend deployment requirements
+- [x] 1. Create Prometheus server config (global, scrape, remote_write receiver, retention) -- `configs/prometheus/prometheus.yml`
+- [x] 2. Create Prometheus recording rules (pre-computed aggregations for dashboard performance) -- `configs/prometheus/recording_rules.yml`
+- [x] 3. Create Loki server config (storage, retention, limits, schema) -- `configs/loki/loki.yml`
+- [x] 4. Create Grafana datasource provisioning (Prometheus + Loki endpoints) -- `configs/grafana/datasources/datasources.yml`
+- [x] 5. Create Grafana dashboard provisioning (point to dashboards/ directory) -- `configs/grafana/dashboards/dashboards.yml`
+- [x] 6. Document backend deployment requirements -- `docs/BACKEND_DEPLOYMENT.md`
 
-### Human Actions Required
+### Implementation Notes
+
+- Prometheus: 30d retention, 50GB size limit, WAL compression, remote_write receiver enabled
+- Recording rules: 3 groups (Windows, Linux, Fleet) with pre-computed CPU/memory/disk/network aggregations
+- Loki: Schema v13, TSDB store, 720h retention, 10MB/s ingestion limit, 10K stream limit
+- Grafana: Datasource UIDs (prometheus, loki) used by all dashboards for portability
+
+### Human Actions Required (Deferred Until Cluster Ready)
 
 - [ ] Deploy Prometheus to Kubernetes cluster
 - [ ] Deploy Loki to Kubernetes cluster
@@ -125,50 +133,55 @@
 
 ## Phase 3: Alerting Rules and Routing
 
-**Goal**: Build alert rules that achieve parity with critical SCOM monitors, configure Alertmanager routing, and integrate Teams notifications.
+**Goal**: Comprehensive alert rules for Windows and Linux servers based on industry best practices, Alertmanager routing with Teams integration, and operational runbook stubs.
 
-**Status**: Pending
+**Status**: Completed
 
 ### Tasks
 
-- [ ] Audit existing SCOM monitors and identify critical alerts to replicate
-- [ ] Create Prometheus alerting rules for Windows servers (CPU, memory, disk, services)
-- [ ] Create Prometheus alerting rules for Linux servers (CPU, memory, disk, systemd)
-- [ ] Create Prometheus alerting rules for infrastructure (connectivity, DNS, NTP)
-- [ ] Configure Alertmanager routing tree (severity-based routing)
-- [ ] Configure Alertmanager receivers (Teams webhook, email fallback)
-- [ ] Configure alert grouping and inhibition rules
-- [ ] Create Grafana contact points and notification policies
-- [ ] Document alert runbooks for each critical alert
+- [x] 7. Create Windows server alert rules (CPU, memory, disk, services, uptime) -- `alerts/prometheus/windows_alerts.yml`
+- [x] 8. Create Linux server alert rules (CPU, memory, disk, systemd, load) -- `alerts/prometheus/linux_alerts.yml`
+- [x] 9. Create infrastructure alert rules (Prometheus/Loki/Alertmanager health, fleet anomalies) -- `alerts/prometheus/infra_alerts.yml`
+- [x] 10. Create role-specific alert rules (AD replication, SQL health, IIS errors, Docker daemon) -- `alerts/prometheus/role_alerts.yml`
+- [x] 11. Create Alertmanager config (routing tree, receivers, grouping, inhibition) -- `configs/alertmanager/alertmanager.yml`
+- [x] 12. Create Alertmanager Teams webhook template (Adaptive Card format) -- `configs/alertmanager/templates/teams.tmpl`
+- [x] 13. Create Grafana notification provisioning (contact points, policies) -- `configs/grafana/notifiers/notifiers.yml`
+- [x] 14. Document alert runbooks with investigation and remediation steps -- `docs/ALERT_RUNBOOKS.md`
 
-### Human Actions Required
+### Implementation Notes
+
+- 46 total alert rules across 4 files: Windows (10), Linux (13), Infrastructure (10), Role-specific (14)
+- Alert rules reference recording rules from Phase 2 for consistent metric naming
+- Alertmanager routing: critical -> Teams + email, warning -> Teams, info -> Teams (separate channel)
+- Inhibition rules: server down suppresses warnings; notification failures suppress fleet alerts
+- Teams template uses Adaptive Card JSON for rich formatting with severity, host, environment facts
+- Full runbooks with investigation commands and remediation steps for every alert
+
+### Human Actions Required (Deferred Until Cluster Ready)
 
 - [ ] Create Teams Incoming Webhook in monitoring channel
-- [ ] Provide SCOM monitor export/list for audit
 - [ ] Deploy Alertmanager to Kubernetes cluster
 - [ ] Test alert delivery to Teams channel
 - [ ] Review and approve alert thresholds
+- [ ] Provide SCOM monitor export for gap analysis (optional, can add later)
 
 ---
 
 ## Phase 4: Grafana Dashboards
 
-**Goal**: Create comprehensive Grafana dashboards for Windows Server, Linux Server, and infrastructure overview.
+**Goal**: Pre-built dashboard JSON files querying the exact metrics from our Alloy configs, with template variables for fleet-wide filtering.
 
-**Status**: Pending
+**Status**: In Progress
 
 ### Tasks
 
-- [ ] Create Grafana datasource provisioning YAML (Prometheus + Loki)
-- [ ] Create dashboard provisioning YAML (point to dashboards/ directory)
-- [ ] Build Windows Server overview dashboard (CPU, memory, disk, network, services)
-- [ ] Build Linux Server overview dashboard (CPU, memory, disk, network, systemd)
-- [ ] Build Infrastructure Overview dashboard (fleet health, top-N, alert summary)
-- [ ] Build Log Explorer dashboard (integrated log search with metric correlation)
-- [ ] Create dashboard variables (environment, datacenter, hostname filters)
-- [ ] Document dashboard customization guide
+- [ ] 15. Build Windows Server overview dashboard (CPU, memory, disk, network, services) -- `dashboards/windows/windows_overview.json`
+- [ ] 16. Build Linux Server overview dashboard (CPU, memory, disk, network, systemd) -- `dashboards/linux/linux_overview.json`
+- [ ] 17. Build Infrastructure Overview dashboard (fleet health, top-N, alert summary) -- `dashboards/overview/infrastructure_overview.json`
+- [ ] 18. Build Log Explorer dashboard (unified log search across Windows Event Log + Linux journal) -- `dashboards/overview/log_explorer.json`
+- [ ] 19. Document dashboard customization guide -- `docs/DASHBOARD_GUIDE.md`
 
-### Human Actions Required
+### Human Actions Required (Deferred Until Cluster Ready)
 
 - [ ] Deploy Grafana to Kubernetes cluster
 - [ ] Configure Grafana authentication (AD/LDAP integration)
@@ -179,20 +192,21 @@
 
 ## Phase 5: Validation Tooling
 
-**Goal**: Build Python scripts to validate configurations, lint dashboards, and test alert rules before deployment.
+**Goal**: Python scripts to validate all config types before deployment, runnable locally and in CI.
 
 **Status**: Pending
 
 ### Tasks
 
-- [ ] Create config validator for Alloy configs (syntax + required fields)
-- [ ] Create config validator for Prometheus rules (promtool integration)
-- [ ] Create dashboard JSON schema validator
-- [ ] Create alert rule coverage checker (compare against SCOM monitor list)
-- [ ] Set up test fixtures and expected outputs
-- [ ] Document tooling usage
+- [ ] 20. Create Alloy config validator (syntax structure, required components, env var usage) -- `scripts/validate_alloy.py`
+- [ ] 21. Create Prometheus/Alertmanager YAML validator (schema, required fields, label compliance) -- `scripts/validate_prometheus.py`
+- [ ] 22. Create Grafana dashboard JSON validator (schema, template vars, panel completeness) -- `scripts/validate_dashboards.py`
+- [ ] 23. Create unified validation runner (runs all validators, outputs report) -- `scripts/validate_all.py`
+- [ ] 24. Create test fixtures and expected outputs -- `tests/`
+- [ ] 25. Create requirements.txt for validation dependencies -- `requirements.txt`
+- [ ] 26. Document tooling usage -- `docs/VALIDATION_TOOLING.md`
 
-### Human Actions Required
+### Human Actions Required (Deferred Until CI Pipeline Ready)
 
 - [ ] Integrate validation into CI/CD pipeline
 

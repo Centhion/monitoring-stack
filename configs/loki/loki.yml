@@ -1,0 +1,171 @@
+# =============================================================================
+# Loki Server Configuration
+# =============================================================================
+# Core Loki server config for the Enterprise Monitoring Platform.
+# Loki receives log entries from Grafana Alloy agents via the push API
+# and provides log querying for Grafana dashboards.
+#
+# Deployment: Kubernetes pod with persistent volume for chunk/index storage.
+# This config is mounted as a ConfigMap.
+#
+# This uses a single-binary (monolithic) deployment for simplicity.
+# For high-availability, migrate to microservices mode with separate
+# ingester, querier, and compactor components.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Authentication
+# Disabled for single-tenant deployment. Enable multi-tenancy if multiple
+# teams need isolated log namespaces.
+# ---------------------------------------------------------------------------
+auth_enabled: false
+
+# ---------------------------------------------------------------------------
+# Server Settings
+# HTTP and gRPC listener configuration.
+# ---------------------------------------------------------------------------
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+
+  # Graceful shutdown timeout. Give in-flight requests time to complete.
+  graceful_shutdown_timeout: 30s
+
+  # Limit request body size to prevent oversized log pushes from
+  # overwhelming the ingester.
+  http_server_read_timeout: 60s
+  http_server_write_timeout: 60s
+
+# ---------------------------------------------------------------------------
+# Common Configuration
+# Shared settings applied across all Loki components.
+# ---------------------------------------------------------------------------
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+
+# ---------------------------------------------------------------------------
+# Schema Configuration
+# Defines how Loki stores index and chunk data. Schema v13 is the current
+# stable version. Each period entry defines the schema for data from that
+# date forward. Never modify existing entries -- add new ones for migrations.
+# ---------------------------------------------------------------------------
+schema_config:
+  configs:
+    - from: "2024-01-01"
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+# ---------------------------------------------------------------------------
+# Storage Configuration
+# Filesystem-based storage for single-node deployment. For production HA,
+# migrate to object storage (S3, Azure Blob, GCS) by changing object_store
+# in schema_config and adding the appropriate storage block here.
+# ---------------------------------------------------------------------------
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/tsdb-index
+    cache_location: /loki/tsdb-cache
+
+  filesystem:
+    directory: /loki/chunks
+
+# ---------------------------------------------------------------------------
+# Compactor
+# Merges and deduplicates index files. Also handles log retention enforcement.
+# ---------------------------------------------------------------------------
+compactor:
+  working_directory: /loki/compactor
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150
+  delete_request_store: filesystem
+
+# ---------------------------------------------------------------------------
+# Limits Configuration
+# Per-tenant and global limits to protect Loki from resource exhaustion.
+# These are tuned for a medium-scale deployment (hundreds of servers).
+# Adjust based on actual ingestion volume after deployment.
+# ---------------------------------------------------------------------------
+limits_config:
+  # Retention period for log data. Logs older than this are deleted by
+  # the compactor. 30 days provides sufficient history for troubleshooting
+  # without excessive storage costs.
+  retention_period: 720h  # 30 days
+
+  # Maximum number of label names per log stream.
+  max_label_names_per_series: 30
+
+  # Maximum size of a single log line. Lines exceeding this are truncated.
+  max_line_size: 256KB
+
+  # Ingestion rate limits (per tenant, but with auth_enabled: false
+  # all logs go to the "fake" tenant).
+  ingestion_rate_mb: 10
+  ingestion_burst_size_mb: 20
+
+  # Maximum number of active streams per tenant.
+  max_global_streams_per_user: 10000
+
+  # Query limits to prevent expensive queries from consuming all resources.
+  max_query_series: 500
+  max_query_parallelism: 32
+  max_entries_limit_per_query: 5000
+
+  # Split long-range queries into smaller chunks for parallel execution.
+  split_queries_by_interval: 1h
+
+  # Reject log entries older than this to prevent backfill attacks.
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h  # 7 days
+
+# ---------------------------------------------------------------------------
+# Query Range Configuration
+# Controls how range queries are split and cached.
+# ---------------------------------------------------------------------------
+query_range:
+  align_queries_with_step: true
+  cache_results: true
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 100
+
+# ---------------------------------------------------------------------------
+# Ruler Configuration
+# Loki can evaluate LogQL alerting rules (in addition to Prometheus).
+# Currently unused -- alerting is handled by Prometheus rules. Enable
+# if you need log-based alert rules in the future.
+# ---------------------------------------------------------------------------
+# ruler:
+#   storage:
+#     type: local
+#     local:
+#       directory: /loki/rules
+#   rule_path: /loki/rules-temp
+#   alertmanager_url: http://alertmanager:9093
+#   ring:
+#     kvstore:
+#       store: inmemory
+#   enable_api: true
+
+# ---------------------------------------------------------------------------
+# Analytics
+# Disable anonymous usage reporting.
+# ---------------------------------------------------------------------------
+analytics:
+  reporting_enabled: false

@@ -1,0 +1,140 @@
+# =============================================================================
+# Infrastructure Alert Rules
+# =============================================================================
+# Cross-platform and fleet-level alerting rules. These cover conditions
+# that are not OS-specific: monitoring pipeline health, fleet-wide
+# anomalies, and observability stack self-monitoring.
+# =============================================================================
+
+groups:
+  - name: infrastructure_alerts
+    rules:
+      # -----------------------------------------------------------------
+      # Monitoring Pipeline Health
+      # These alert on the observability stack itself to prevent
+      # silent failures where servers go unmonitored.
+      # -----------------------------------------------------------------
+      - alert: PrometheusTargetDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "Target {{ $labels.instance }} is down (job: {{ $labels.job }})"
+          description: "Prometheus cannot reach {{ $labels.instance }} for job {{ $labels.job }}. Metrics collection has stopped."
+          runbook_url: "docs/ALERT_RUNBOOKS.md#prometheustargetdown"
+
+      - alert: PrometheusRuleFailures
+        expr: increase(prometheus_rule_evaluation_failures_total[5m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "Prometheus rule evaluation failures"
+          description: "Prometheus has encountered {{ $value }} rule evaluation failures in the last 5 minutes. Alert rules or recording rules may not be firing correctly."
+          runbook_url: "docs/ALERT_RUNBOOKS.md#prometheusrulefailures"
+
+      - alert: PrometheusNotificationsFailing
+        expr: increase(prometheus_notifications_errors_total[5m]) > 0
+        for: 10m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "Prometheus cannot send alerts to Alertmanager"
+          description: "Prometheus has encountered {{ $value }} notification errors in the last 5 minutes. Alerts may not be reaching the team."
+          runbook_url: "docs/ALERT_RUNBOOKS.md#prometheusnotificationsfailing"
+
+      - alert: PrometheusStorageNearFull
+        expr: |
+          (prometheus_tsdb_storage_blocks_bytes / (50 * 1024 * 1024 * 1024)) > 0.80
+        for: 30m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "Prometheus TSDB storage approaching limit"
+          description: "TSDB storage is using more than 80% of the 50GB limit. Oldest data may be dropped."
+          runbook_url: "docs/ALERT_RUNBOOKS.md#prometheusstoragnearfull"
+
+      # -----------------------------------------------------------------
+      # Loki Health
+      # -----------------------------------------------------------------
+      - alert: LokiRequestErrors
+        expr: |
+          rate(loki_request_duration_seconds_count{status_code=~"5.."}[5m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "Loki is returning 5xx errors"
+          description: "Loki has been returning server errors for 10 minutes. Log ingestion or queries may be affected."
+          runbook_url: "docs/ALERT_RUNBOOKS.md#lokirequesterrors"
+
+      - alert: LokiIngestionRateHigh
+        expr: |
+          sum(rate(loki_distributor_bytes_received_total[5m])) > (10 * 1024 * 1024)
+        for: 15m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "Loki ingestion rate exceeds 10MB/s"
+          description: "Log ingestion rate has been above 10MB/s for 15 minutes. May indicate log spam or misconfigured agent."
+          runbook_url: "docs/ALERT_RUNBOOKS.md#lokiingestionratehigh"
+
+      # -----------------------------------------------------------------
+      # Alertmanager Health
+      # -----------------------------------------------------------------
+      - alert: AlertmanagerNotificationsFailing
+        expr: increase(alertmanager_notifications_failed_total[5m]) > 0
+        for: 10m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "Alertmanager failing to send notifications"
+          description: "Alertmanager has failed to deliver {{ $value }} notifications in the last 5 minutes. Teams/email notifications may not be arriving."
+          runbook_url: "docs/ALERT_RUNBOOKS.md#alertmanagernotificationsfailing"
+
+      # -----------------------------------------------------------------
+      # Fleet-Level Anomalies
+      # These detect unusual patterns across the entire server fleet.
+      # -----------------------------------------------------------------
+      - alert: FleetHighCpuServers
+        expr: fleet:high_cpu:count > 5
+        for: 15m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "{{ $value }} servers have high CPU in {{ $labels.environment }}/{{ $labels.datacenter }}"
+          description: "More than 5 servers are running above 85% CPU. May indicate a widespread issue (bad deployment, DoS, runaway process)."
+          runbook_url: "docs/ALERT_RUNBOOKS.md#fleethighcpuservers"
+
+      - alert: FleetLowDiskServers
+        expr: fleet:low_disk:count > 3
+        for: 30m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "{{ $value }} servers have low disk space in {{ $labels.environment }}/{{ $labels.datacenter }}"
+          description: "More than 3 servers have a volume with less than 20% free space."
+          runbook_url: "docs/ALERT_RUNBOOKS.md#fleetlowdiskservers"
+
+      - alert: FleetServersNotReporting
+        expr: |
+          fleet:servers_reporting:count
+          < (fleet:servers_reporting:count offset 1h) * 0.90
+        for: 10m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "Significant drop in reporting servers for {{ $labels.os }} in {{ $labels.environment }}"
+          description: "More than 10% of {{ $labels.os }} servers have stopped reporting metrics in the last hour. Possible network issue or widespread outage."
+          runbook_url: "docs/ALERT_RUNBOOKS.md#fleetserversnotreporting"

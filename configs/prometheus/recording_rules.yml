@@ -1,0 +1,193 @@
+# =============================================================================
+# Prometheus Recording Rules
+# =============================================================================
+# Pre-compute expensive aggregations to improve dashboard query performance.
+# Recording rules evaluate at the global evaluation_interval (30s) and store
+# results as new time series.
+#
+# Naming convention: <namespace>:<metric>:<aggregation>
+#   namespace -- logical grouping (instance, job, cluster)
+#   metric    -- what is being measured
+#   aggregation -- how it is aggregated (avg, total, ratio)
+#
+# These rules produce the metrics that Grafana dashboards query directly.
+# Changing a rule name here requires updating the corresponding dashboard panel.
+# =============================================================================
+
+groups:
+  # ---------------------------------------------------------------------------
+  # Windows Server Recording Rules
+  # Pre-aggregated metrics from windows_exporter collected by Alloy.
+  # ---------------------------------------------------------------------------
+  - name: windows_recording_rules
+    interval: 30s
+    rules:
+      # CPU utilization as a percentage (0-100).
+      # windows_cpu_time_total is a counter per mode (idle, user, system, etc.)
+      # Subtracting idle from 1 gives overall utilization.
+      - record: instance:windows_cpu_utilization:ratio
+        expr: |
+          1 - avg by (instance, hostname, environment, datacenter, role) (
+            rate(windows_cpu_time_total{mode="idle"}[5m])
+          )
+
+      # Memory utilization as a percentage.
+      - record: instance:windows_memory_utilization:ratio
+        expr: |
+          1 - (
+            windows_os_physical_memory_free_bytes
+            /
+            windows_cs_physical_memory_bytes
+          )
+
+      # Logical disk free space percentage per volume.
+      - record: instance:windows_disk_free:ratio
+        expr: |
+          windows_logical_disk_free_bytes{volume!~"HarddiskVolume.*"}
+          /
+          windows_logical_disk_size_bytes{volume!~"HarddiskVolume.*"}
+
+      # Disk I/O utilization (percentage of time disk is busy).
+      - record: instance:windows_disk_io_utilization:ratio
+        expr: |
+          rate(windows_logical_disk_idle_seconds_total{volume!~"HarddiskVolume.*"}[5m])
+
+      # Network bytes per second (inbound + outbound combined).
+      - record: instance:windows_network_bytes:rate5m
+        expr: |
+          sum by (instance, hostname, environment, datacenter, role) (
+            rate(windows_net_bytes_total[5m])
+          )
+
+      # Windows service health: count of services not in running state.
+      - record: instance:windows_services_not_running:count
+        expr: |
+          count by (instance, hostname, environment, datacenter, role) (
+            windows_service_state{state!="running"} == 1
+          )
+
+      # System uptime in days.
+      - record: instance:windows_uptime:days
+        expr: |
+          windows_os_time - windows_os_boot_time
+
+  # ---------------------------------------------------------------------------
+  # Linux Server Recording Rules
+  # Pre-aggregated metrics from node_exporter (unix) collected by Alloy.
+  # ---------------------------------------------------------------------------
+  - name: linux_recording_rules
+    interval: 30s
+    rules:
+      # CPU utilization as a percentage (0-100).
+      - record: instance:linux_cpu_utilization:ratio
+        expr: |
+          1 - avg by (instance, hostname, environment, datacenter, role) (
+            rate(node_cpu_seconds_total{mode="idle"}[5m])
+          )
+
+      # Memory utilization as a percentage.
+      - record: instance:linux_memory_utilization:ratio
+        expr: |
+          1 - (
+            node_memory_MemAvailable_bytes
+            /
+            node_memory_MemTotal_bytes
+          )
+
+      # Filesystem free space percentage per mount point.
+      # Exclude tmpfs, devtmpfs, and other virtual filesystems.
+      - record: instance:linux_disk_free:ratio
+        expr: |
+          node_filesystem_avail_bytes{fstype!~"tmpfs|devtmpfs|squashfs|overlay"}
+          /
+          node_filesystem_size_bytes{fstype!~"tmpfs|devtmpfs|squashfs|overlay"}
+
+      # Disk I/O utilization (percentage of time disk is busy).
+      - record: instance:linux_disk_io_utilization:ratio
+        expr: |
+          rate(node_disk_io_time_seconds_total[5m])
+
+      # Network bytes per second (receive + transmit combined).
+      # Exclude loopback and virtual interfaces.
+      - record: instance:linux_network_bytes:rate5m
+        expr: |
+          sum by (instance, hostname, environment, datacenter, role) (
+            rate(node_network_receive_bytes_total{device!~"lo|veth.*|docker.*|br-.*"}[5m])
+            +
+            rate(node_network_transmit_bytes_total{device!~"lo|veth.*|docker.*|br-.*"}[5m])
+          )
+
+      # System load average (1 minute) normalized by CPU count.
+      - record: instance:linux_load_normalized:ratio
+        expr: |
+          node_load1
+          /
+          count by (instance, hostname, environment, datacenter, role) (
+            node_cpu_seconds_total{mode="idle"}
+          )
+
+      # Systemd failed units count.
+      - record: instance:linux_systemd_failed:count
+        expr: |
+          count by (instance, hostname, environment, datacenter, role) (
+            node_systemd_unit_state{state="failed"} == 1
+          )
+
+      # System uptime in seconds.
+      - record: instance:linux_uptime:seconds
+        expr: |
+          time() - node_boot_time_seconds
+
+  # ---------------------------------------------------------------------------
+  # Fleet-Wide Recording Rules
+  # Aggregations across all servers for the Infrastructure Overview dashboard.
+  # ---------------------------------------------------------------------------
+  - name: fleet_recording_rules
+    interval: 60s
+    rules:
+      # Total servers reporting metrics, grouped by OS.
+      - record: fleet:servers_reporting:count
+        expr: |
+          count by (os, environment, datacenter) (
+            up{job=~"windows_base|linux_base"} == 1
+          )
+
+      # Average CPU utilization across the fleet per environment.
+      - record: fleet:cpu_utilization:avg
+        expr: |
+          avg by (os, environment, datacenter) (
+            instance:windows_cpu_utilization:ratio
+            or
+            instance:linux_cpu_utilization:ratio
+          )
+
+      # Average memory utilization across the fleet per environment.
+      - record: fleet:memory_utilization:avg
+        expr: |
+          avg by (os, environment, datacenter) (
+            instance:windows_memory_utilization:ratio
+            or
+            instance:linux_memory_utilization:ratio
+          )
+
+      # Count of servers with high CPU (>85%).
+      - record: fleet:high_cpu:count
+        expr: |
+          count by (os, environment, datacenter) (
+            (
+              instance:windows_cpu_utilization:ratio > 0.85
+              or
+              instance:linux_cpu_utilization:ratio > 0.85
+            )
+          )
+
+      # Count of servers with low disk space (<20% free on any volume).
+      - record: fleet:low_disk:count
+        expr: |
+          count by (os, environment, datacenter) (
+            (
+              instance:windows_disk_free:ratio < 0.20
+              or
+              instance:linux_disk_free:ratio < 0.20
+            )
+          )

@@ -1,0 +1,67 @@
+# =============================================================================
+# Grafana Notification Provisioning
+# =============================================================================
+# Configures Grafana contact points and notification policies for
+# Grafana-managed alerting. This supplements the Prometheus/Alertmanager
+# pipeline with Grafana-native alerting capabilities.
+#
+# Mounted at: /etc/grafana/provisioning/notifiers/notifiers.yml
+#
+# Note: The primary alerting path is Prometheus rules -> Alertmanager -> Teams.
+# Grafana contact points provide an additional notification path for
+# Grafana-specific alert rules (e.g., dashboard-driven alerts).
+# =============================================================================
+
+apiVersion: 1
+
+# ---------------------------------------------------------------------------
+# Contact Points
+# Define notification channels that Grafana alert rules can send to.
+# ---------------------------------------------------------------------------
+contactPoints:
+  - orgId: 1
+    name: "Microsoft Teams"
+    receivers:
+      - uid: teams-webhook
+        type: teams
+        settings:
+          url: "${TEAMS_WEBHOOK_URL}"
+          title: >-
+            [{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}
+          sectiontitle: >-
+            {{ .CommonLabels.hostname }} ({{ .CommonLabels.environment }})
+          text: >-
+            {{ .CommonAnnotations.summary }}
+        disableResolveMessage: false
+
+  - orgId: 1
+    name: "Email Fallback"
+    receivers:
+      - uid: email-fallback
+        type: email
+        settings:
+          addresses: "${ALERT_EMAIL_TO:-ops-team@example.com}"
+          singleEmail: true
+        disableResolveMessage: false
+
+# ---------------------------------------------------------------------------
+# Notification Policies
+# Route alerts to contact points based on labels.
+# ---------------------------------------------------------------------------
+policies:
+  - orgId: 1
+    receiver: "Microsoft Teams"
+    group_by:
+      - alertname
+      - hostname
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+      # Critical alerts go to Teams and Email.
+      - receiver: "Email Fallback"
+        matchers:
+          - severity = critical
+        continue: true
+        group_wait: 15s
+        repeat_interval: 1h

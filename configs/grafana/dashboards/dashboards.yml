@@ -1,0 +1,61 @@
+# =============================================================================
+# Grafana Dashboard Provisioning
+# =============================================================================
+# Automatically loads dashboard JSON files from the specified directories
+# when Grafana starts. Mounted as a file in
+# /etc/grafana/provisioning/dashboards/.
+#
+# Dashboards are organized by category:
+#   - windows/  -- Windows Server dashboards
+#   - linux/    -- Linux Server dashboards
+#   - overview/ -- Infrastructure overview and log explorer dashboards
+#
+# The dashboard JSON files are mounted from the dashboards/ directory
+# in this repository (via ConfigMap or persistent volume).
+# =============================================================================
+
+apiVersion: 1
+
+providers:
+  # ---------------------------------------------------------------------------
+  # Windows Server Dashboards
+  # ---------------------------------------------------------------------------
+  - name: "Windows"
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards/windows
+      foldersFromFilesStructure: false
+    folder: "Windows Servers"
+
+  # ---------------------------------------------------------------------------
+  # Linux Server Dashboards
+  # ---------------------------------------------------------------------------
+  - name: "Linux"
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards/linux
+      foldersFromFilesStructure: false
+    folder: "Linux Servers"
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure Overview Dashboards
+  # Includes fleet health overview and log explorer.
+  # ---------------------------------------------------------------------------
+  - name: "Overview"
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards/overview
+      foldersFromFilesStructure: false
+    folder: "Infrastructure"

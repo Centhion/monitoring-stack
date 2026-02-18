@@ -93,7 +93,9 @@ Monitoring_Dashboarding/
 +-- skills/                      # Universal helper scripts
 +-- docs/                        # Documentation
 |   +-- PROJECT_PLAN.md         # Task tracking (single source of truth)
-|   +-- SSH_AUTHENTICATION.md   # Git auth setup
+|   +-- ALLOY_DEPLOYMENT.md    # Alloy agent deployment guide
+|   +-- BACKEND_DEPLOYMENT.md  # Backend service deployment guide
+|   +-- ALERT_RUNBOOKS.md      # Alert response procedures
 +-- tests/                       # Test files for config validation
 +-- .env.example                 # Template for environment variables
 +-- .gitignore                   # Git exclusions

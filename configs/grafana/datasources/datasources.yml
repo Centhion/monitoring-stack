@@ -1,0 +1,73 @@
+# =============================================================================
+# Grafana Datasource Provisioning
+# =============================================================================
+# Automatically configures Prometheus and Loki as datasources when Grafana
+# starts. Mounted as a file in /etc/grafana/provisioning/datasources/.
+#
+# Environment variables are expanded by Grafana at startup using the
+# ${VAR:-default} syntax.
+# =============================================================================
+
+apiVersion: 1
+
+# Delete datasources that are no longer listed here on Grafana startup.
+# Prevents stale datasources from accumulating.
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+  - name: Loki
+    orgId: 1
+
+datasources:
+  # ---------------------------------------------------------------------------
+  # Prometheus
+  # Primary metrics datasource. Queried by all metric dashboards.
+  # ---------------------------------------------------------------------------
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    orgId: 1
+    uid: prometheus
+    url: ${PROMETHEUS_URL:-http://prometheus:9090}
+    isDefault: true
+    editable: false
+
+    jsonData:
+      # Time interval that Prometheus scrapes targets. Used by Grafana
+      # to set appropriate $__interval values in queries.
+      timeInterval: "30s"
+
+      # HTTP method for queries. POST supports longer queries.
+      httpMethod: POST
+
+      # Prometheus type helps Grafana optimize query building.
+      prometheusType: Prometheus
+      prometheusVersion: "2.x"
+
+      # Enable exemplar support if tracing is added later.
+      exemplarTraceIdDestinations: []
+
+  # ---------------------------------------------------------------------------
+  # Loki
+  # Primary log datasource. Queried by Log Explorer and log panels.
+  # ---------------------------------------------------------------------------
+  - name: Loki
+    type: loki
+    access: proxy
+    orgId: 1
+    uid: loki
+    url: ${LOKI_URL:-http://loki:3100}
+    isDefault: false
+    editable: false
+
+    jsonData:
+      # Maximum number of log lines returned per query.
+      maxLines: 1000
+
+      # Link Loki to Prometheus for metric-to-log correlation.
+      # Enables "Show logs" button on metric panels.
+      derivedFields:
+        - datasourceUid: prometheus
+          matcherRegex: "hostname=(\\w+)"
+          name: Hostname
+          url: ""

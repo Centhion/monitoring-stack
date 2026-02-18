@@ -1,0 +1,134 @@
+# =============================================================================
+# Alertmanager Configuration
+# =============================================================================
+# Routes, groups, and dispatches alerts from Prometheus to notification
+# channels. Primary channel is Microsoft Teams via incoming webhook.
+# Email is configured as a fallback for critical alerts.
+#
+# Environment variables (set in Kubernetes deployment):
+#   TEAMS_WEBHOOK_URL -- Microsoft Teams incoming webhook URL
+#   SMTP_HOST         -- SMTP server hostname
+#   SMTP_PORT         -- SMTP server port (default: 587)
+#   SMTP_FROM         -- Sender email address
+#   ALERT_EMAIL_TO    -- Recipient email address for critical alerts
+# =============================================================================
+
+global:
+  # Timeout for resolving alerts. If an alert is not resolved within this
+  # window after it stops firing, Alertmanager marks it resolved.
+  resolve_timeout: 5m
+
+  # SMTP defaults for email notifications (fallback channel).
+  smtp_smarthost: "${SMTP_HOST:-smtp.example.com}:${SMTP_PORT:-587}"
+  smtp_from: "${SMTP_FROM:-monitoring@example.com}"
+  smtp_require_tls: true
+
+# ---------------------------------------------------------------------------
+# Templates
+# Custom notification templates for Teams webhook messages.
+# ---------------------------------------------------------------------------
+templates:
+  - "/etc/alertmanager/templates/*.tmpl"
+
+# ---------------------------------------------------------------------------
+# Route Tree
+# Determines which receiver handles each alert based on labels.
+# The tree is evaluated top-down; first match wins.
+#
+# Grouping: Alerts are grouped by alertname + instance to reduce
+# notification spam. A server with multiple alerts sends one grouped
+# notification rather than one per alert.
+# ---------------------------------------------------------------------------
+route:
+  # Default receiver catches any alert that does not match a child route.
+  receiver: teams_default
+
+  # Group alerts by these labels. All alerts with the same combination
+  # of alertname and hostname are bundled into a single notification.
+  group_by:
+    - alertname
+    - hostname
+
+  # Wait this long before sending the first notification for a new group.
+  # Allows time for related alerts to fire and be grouped together.
+  group_wait: 30s
+
+  # After the first notification, wait this long before sending updates
+  # about new alerts joining the group.
+  group_interval: 5m
+
+  # How often to re-send notifications for an alert that is still firing.
+  repeat_interval: 4h
+
+  # Child routes for severity-based routing.
+  routes:
+    # Critical alerts: immediate notification to Teams AND email.
+    - match:
+        severity: critical
+      receiver: teams_and_email
+      group_wait: 15s
+      repeat_interval: 1h
+      continue: false
+
+    # Warning alerts: Teams only, standard timing.
+    - match:
+        severity: warning
+      receiver: teams_default
+      repeat_interval: 4h
+      continue: false
+
+    # Info alerts: Teams only, reduced frequency.
+    - match:
+        severity: info
+      receiver: teams_info
+      repeat_interval: 12h
+      continue: false
+
+# ---------------------------------------------------------------------------
+# Inhibition Rules
+# Suppress noisy alerts when a higher-severity condition explains them.
+# ---------------------------------------------------------------------------
+inhibit_rules:
+  # If a server is completely down, suppress all other alerts for that server.
+  # No point alerting on high CPU if the server is unreachable.
+  - source_matchers:
+      - alertname =~ "WindowsServerDown|LinuxServerDown"
+    target_matchers:
+      - severity =~ "warning|info"
+    equal:
+      - hostname
+
+  # If Prometheus cannot reach Alertmanager, suppress fleet-level alerts
+  # since the monitoring pipeline itself is broken.
+  - source_matchers:
+      - alertname = "PrometheusNotificationsFailing"
+    target_matchers:
+      - alertname =~ "Fleet.*"
+
+# ---------------------------------------------------------------------------
+# Receivers
+# Define how notifications are delivered for each channel.
+# ---------------------------------------------------------------------------
+receivers:
+  # Teams channel for critical + warning alerts.
+  - name: teams_default
+    webhook_configs:
+      - url: "${TEAMS_WEBHOOK_URL}"
+        send_resolved: true
+
+  # Critical alerts go to both Teams and email for redundancy.
+  - name: teams_and_email
+    webhook_configs:
+      - url: "${TEAMS_WEBHOOK_URL}"
+        send_resolved: true
+    email_configs:
+      - to: "${ALERT_EMAIL_TO:-ops-team@example.com}"
+        send_resolved: true
+        headers:
+          Subject: "[CRITICAL] {{ .GroupLabels.alertname }} on {{ .GroupLabels.hostname }}"
+
+  # Info-level alerts go to Teams with minimal formatting.
+  - name: teams_info
+    webhook_configs:
+      - url: "${TEAMS_WEBHOOK_URL}"
+        send_resolved: false

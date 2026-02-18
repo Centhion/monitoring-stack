@@ -21,7 +21,7 @@ Provide centralized infrastructure monitoring, log aggregation, alerting, and da
 
 ```bash
 # Clone the repository
-git clone git@github.com:username/Monitoring_Dashboarding.git
+git clone https://github.com/Centhion/Monitoring_Dashboarding.git
 cd Monitoring_Dashboarding
 
 # Set up environment
@@ -58,7 +58,9 @@ cp .env.example .env
 
 - See `ARCHITECTURE.md` for design patterns, stack details, and decisions
 - See `docs/PROJECT_PLAN.md` for current status and task tracking
-- See `docs/SSH_AUTHENTICATION.md` for Git authentication setup
+- See `docs/ALLOY_DEPLOYMENT.md` for Alloy agent deployment on Windows and Linux
+- See `docs/BACKEND_DEPLOYMENT.md` for Prometheus, Loki, Alertmanager, and Grafana deployment
+- See `docs/ALERT_RUNBOOKS.md` for alert investigation and remediation procedures
 
 ## Development
 
