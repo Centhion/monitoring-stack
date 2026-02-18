@@ -1,0 +1,31 @@
+# Test fixture: alert rules with multiple issues.
+# The validator should report errors for missing fields and invalid formats.
+
+groups:
+  - name: bad_alerts
+    interval: invalid_duration
+    rules:
+      # Missing 'expr' field
+      - alert: MissingExpr
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Missing expression"
+
+      # Missing 'for' duration and 'severity' label
+      - alert: MissingForAndSeverity
+        expr: up == 0
+        annotations:
+          summary: "No for duration or severity"
+
+  # Duplicate group name
+  - name: bad_alerts
+    rules:
+      - alert: ValidAlert
+        expr: node_load1 > 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Test"

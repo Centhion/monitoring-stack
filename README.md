@@ -61,6 +61,8 @@ cp .env.example .env
 - See `docs/ALLOY_DEPLOYMENT.md` for Alloy agent deployment on Windows and Linux
 - See `docs/BACKEND_DEPLOYMENT.md` for Prometheus, Loki, Alertmanager, and Grafana deployment
 - See `docs/ALERT_RUNBOOKS.md` for alert investigation and remediation procedures
+- See `docs/DASHBOARD_GUIDE.md` for dashboard customization and creation
+- See `docs/VALIDATION_TOOLING.md` for config validation scripts and CI integration
 
 ## Development
 

@@ -1,0 +1,24 @@
+# Test fixture: minimal valid Prometheus alert rules.
+# Used by test_validate_prometheus.py to verify the validator accepts clean rules.
+
+groups:
+  - name: test_alerts
+    interval: 30s
+    rules:
+      - alert: TestHighCPU
+        expr: instance:windows_cpu_utilization:ratio > 0.90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Test CPU alert"
+          description: "CPU above 90% for 5 minutes on {{ $labels.hostname }}"
+
+      - alert: TestLowDisk
+        expr: instance:windows_disk_free:ratio < 0.10
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Test disk alert"
+          description: "Disk free below 10% on {{ $labels.hostname }}"

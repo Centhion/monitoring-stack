@@ -14,8 +14,8 @@
 | Phase 1: Alloy Agent Configs | Completed | 13 configs: common (3), Windows base+4 roles (6), Linux base+docker (3), deployment guide (1) |
 | Phase 2: Backend Configs (Prometheus + Loki) | Completed | 6 tasks: Prometheus config + recording rules, Loki config, Grafana provisioning, docs |
 | Phase 3: Alerting Rules and Routing | Completed | 8 tasks: 46 alert rules, Alertmanager routing + Teams template, Grafana notifiers, runbooks |
-| Phase 4: Grafana Dashboards | In Progress | 5 tasks: Windows/Linux/Overview/Log Explorer dashboards, customization guide |
-| Phase 5: Validation Tooling | Pending | 7 tasks: Alloy/Prometheus/Dashboard validators, runner, tests, docs |
+| Phase 4: Grafana Dashboards | Completed | 4 dashboards (Windows, Linux, Infra Overview, Log Explorer) + customization guide |
+| Phase 5: Validation Tooling | Completed | 3 validators + runner, 12/12 tests passing, requirements.txt, docs |
 | Phase 6: Mimir Migration | Pending | Long-term metrics storage (when ready to scale) |
 
 **Status Key**: Pending | In Progress | Completed | Blocked
@@ -171,15 +171,25 @@
 
 **Goal**: Pre-built dashboard JSON files querying the exact metrics from our Alloy configs, with template variables for fleet-wide filtering.
 
-**Status**: In Progress
+**Status**: Completed
 
 ### Tasks
 
-- [ ] 15. Build Windows Server overview dashboard (CPU, memory, disk, network, services) -- `dashboards/windows/windows_overview.json`
-- [ ] 16. Build Linux Server overview dashboard (CPU, memory, disk, network, systemd) -- `dashboards/linux/linux_overview.json`
-- [ ] 17. Build Infrastructure Overview dashboard (fleet health, top-N, alert summary) -- `dashboards/overview/infrastructure_overview.json`
-- [ ] 18. Build Log Explorer dashboard (unified log search across Windows Event Log + Linux journal) -- `dashboards/overview/log_explorer.json`
-- [ ] 19. Document dashboard customization guide -- `docs/DASHBOARD_GUIDE.md`
+- [x] 15. Build Windows Server overview dashboard (CPU, memory, disk, network, services) -- `dashboards/windows/windows_overview.json`
+- [x] 16. Build Linux Server overview dashboard (CPU, memory, disk, network, systemd) -- `dashboards/linux/linux_overview.json`
+- [x] 17. Build Infrastructure Overview dashboard (fleet health, top-N, alert summary) -- `dashboards/overview/infrastructure_overview.json`
+- [x] 18. Build Log Explorer dashboard (unified log search across Windows Event Log + Linux journal) -- `dashboards/overview/log_explorer.json`
+- [x] 19. Document dashboard customization guide -- `docs/DASHBOARD_GUIDE.md`
+
+### Implementation Notes
+
+- Windows overview: 18 panels across 5 rows (overview stats, CPU/memory, disk, network, services)
+- Linux overview: 23 panels across 6 rows (overview stats, CPU/load, memory/swap, disk, network, systemd)
+- Infrastructure overview: 21 panels across 5 rows (fleet health, trends, top-N problems, alerts, availability)
+- Log Explorer: 7 panels using LogQL against Loki (volume graphs, Windows/Linux log streams, unified search)
+- All dashboards use recording rule metrics for consistent queries
+- Template variables: environment, datacenter, hostname, role (multi-select with All option)
+- Datasource UIDs: prometheus, loki (matching provisioning config)
 
 ### Human Actions Required (Deferred Until Cluster Ready)
 
@@ -194,17 +204,26 @@
 
 **Goal**: Python scripts to validate all config types before deployment, runnable locally and in CI.
 
-**Status**: Pending
+**Status**: Completed
 
 ### Tasks
 
-- [ ] 20. Create Alloy config validator (syntax structure, required components, env var usage) -- `scripts/validate_alloy.py`
-- [ ] 21. Create Prometheus/Alertmanager YAML validator (schema, required fields, label compliance) -- `scripts/validate_prometheus.py`
-- [ ] 22. Create Grafana dashboard JSON validator (schema, template vars, panel completeness) -- `scripts/validate_dashboards.py`
-- [ ] 23. Create unified validation runner (runs all validators, outputs report) -- `scripts/validate_all.py`
-- [ ] 24. Create test fixtures and expected outputs -- `tests/`
-- [ ] 25. Create requirements.txt for validation dependencies -- `requirements.txt`
-- [ ] 26. Document tooling usage -- `docs/VALIDATION_TOOLING.md`
+- [x] 20. Create Alloy config validator (syntax structure, required components, env var usage) -- `scripts/validate_alloy.py`
+- [x] 21. Create Prometheus/Alertmanager YAML validator (schema, required fields, label compliance) -- `scripts/validate_prometheus.py`
+- [x] 22. Create Grafana dashboard JSON validator (schema, template vars, panel completeness) -- `scripts/validate_dashboards.py`
+- [x] 23. Create unified validation runner (runs all validators, outputs report) -- `scripts/validate_all.py`
+- [x] 24. Create test fixtures and expected outputs -- `tests/`
+- [x] 25. Create requirements.txt for validation dependencies -- `requirements.txt`
+- [x] 26. Document tooling usage -- `docs/VALIDATION_TOOLING.md`
+
+### Implementation Notes
+
+- Alloy validator: brace balancing, required component patterns, duplicate labels, hardcoded endpoints/secrets
+- Prometheus validator: YAML syntax, rule group structure, duration formats, receiver/route consistency
+- Dashboard validator: JSON syntax, UID uniqueness, datasource references, template vars, grid overlap detection
+- Unified runner: orchestrates all validators, supports --verbose and --strict modes
+- Test suite: 12 tests (fixtures for valid + invalid configs per validator type), all passing
+- PyYAML is the only external dependency (requirements.txt)
 
 ### Human Actions Required (Deferred Until CI Pipeline Ready)
 

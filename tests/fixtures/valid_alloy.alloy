@@ -1,0 +1,13 @@
+// Test fixture: minimal valid Alloy config with correct structure.
+// Used by test_validate_alloy.py to verify the validator accepts clean configs.
+
+prometheus.exporter.windows "test" {
+  enabled_collectors = ["cpu", "memory"]
+}
+
+prometheus.scrape "test_scrape" {
+  targets         = prometheus.exporter.windows.test.targets
+  forward_to      = [prometheus.relabel.add_standard_labels.receiver]
+  scrape_interval = "30s"
+  job_name        = "test"
+}

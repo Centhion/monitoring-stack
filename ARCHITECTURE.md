@@ -88,15 +88,23 @@ Monitoring_Dashboarding/
 |   +-- prometheus/             # Prometheus alerting rules (YAML)
 |   +-- grafana/                # Grafana-managed alert rules (JSON)
 +-- scripts/                     # Python tooling
-|   +-- validate_configs.py     # Config linter and validator
-|   +-- generate_dashboard.py   # Dashboard template generator
+|   +-- validate_alloy.py      # Alloy config structural validator
+|   +-- validate_prometheus.py # Prometheus/Alertmanager YAML validator
+|   +-- validate_dashboards.py # Grafana dashboard JSON validator
+|   +-- validate_all.py        # Unified validation runner
+|   +-- validate_on_save.py    # PostToolUse hook for fast syntax checks
 +-- skills/                      # Universal helper scripts
 +-- docs/                        # Documentation
 |   +-- PROJECT_PLAN.md         # Task tracking (single source of truth)
 |   +-- ALLOY_DEPLOYMENT.md    # Alloy agent deployment guide
 |   +-- BACKEND_DEPLOYMENT.md  # Backend service deployment guide
 |   +-- ALERT_RUNBOOKS.md      # Alert response procedures
-+-- tests/                       # Test files for config validation
+|   +-- DASHBOARD_GUIDE.md     # Dashboard customization guide
+|   +-- VALIDATION_TOOLING.md  # Validator usage and CI integration
++-- tests/                       # Test suite for validators
+|   +-- test_validators.py     # 12 test cases for all validators
+|   +-- fixtures/              # Valid and invalid config fixtures
++-- requirements.txt             # Python dependencies (pyyaml, pytest)
 +-- .env.example                 # Template for environment variables
 +-- .gitignore                   # Git exclusions
 +-- README.md                    # Project overview

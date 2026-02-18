@@ -1,0 +1,8 @@
+# Validation tooling dependencies
+# Install: pip install -r requirements.txt
+
+# YAML parsing for Prometheus/Alertmanager/Grafana config validation
+pyyaml>=6.0
+
+# Test runner (optional -- tests also work without pytest via direct execution)
+pytest>=7.0

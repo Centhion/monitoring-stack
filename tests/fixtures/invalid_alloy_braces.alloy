@@ -1,0 +1,7 @@
+// Test fixture: Alloy config with unbalanced braces.
+// The validator should report an error for this file.
+
+prometheus.exporter.windows "test" {
+  enabled_collectors = ["cpu", "memory"]
+
+// Missing closing brace -- should trigger validation error

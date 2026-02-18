@@ -1,0 +1,53 @@
+{
+  "uid": "test-dashboard",
+  "title": "Test Dashboard",
+  "schemaVersion": 39,
+  "tags": ["test"],
+  "templating": {
+    "list": [
+      {
+        "name": "environment",
+        "type": "query",
+        "query": "label_values(environment)"
+      },
+      {
+        "name": "datacenter",
+        "type": "query",
+        "query": "label_values(datacenter)"
+      },
+      {
+        "name": "hostname",
+        "type": "query",
+        "query": "label_values(hostname)"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "CPU Utilization",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "instance:windows_cpu_utilization:ratio{hostname=~\"$hostname\"} * 100",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        }
+      }
+    }
+  ],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "refresh": "30s"
+}
