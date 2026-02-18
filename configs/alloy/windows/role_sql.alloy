@@ -40,8 +40,8 @@ prometheus.exporter.windows "sql" {
   ]
 
   // Monitor SQL-critical Windows services
-  service = {
-    where_clause = "Name LIKE 'MSSQLSERVER' OR Name LIKE 'MSSQL$%' OR Name LIKE 'SQLAgent$%' OR Name LIKE 'SQLSERVERAGENT' OR Name LIKE 'MSSQLFDLauncher%' OR Name LIKE 'SQLBrowser' OR Name LIKE 'SQLWriter'"
+  service {
+    where_clause = "Name='MSSQLSERVER' OR Name LIKE 'MSSQL$%' OR Name LIKE 'SQLAgent$%' OR Name='SQLSERVERAGENT' OR Name LIKE 'MSSQLFDLauncher%' OR Name='SQLBrowser' OR Name='SQLWriter'"
   }
 }
 

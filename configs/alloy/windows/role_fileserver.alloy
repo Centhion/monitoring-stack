@@ -36,8 +36,8 @@ prometheus.exporter.windows "fileserver" {
   ]
 
   // Monitor file-server-critical Windows services
-  service = {
-    where_clause = "Name LIKE 'LanmanServer' OR Name LIKE 'DFSR' OR Name LIKE 'DFS' OR Name LIKE 'SrmSvc' OR Name LIKE 'Dfs'"
+  service {
+    where_clause = "Name='LanmanServer' OR Name='DFSR' OR Name='DFS' OR Name='SrmSvc'"
   }
 }
 

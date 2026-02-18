@@ -85,6 +85,14 @@ prometheus.relabel "add_labels" {
     target_label = "hostname"
     replacement  = env("COMPUTERNAME")
   }
+
+  // Alloy v1.13+ uses "integrations/windows" as the default job name
+  // for built-in exporters. Override to "windows_base" to match our
+  // recording rules, alert rules, and dashboard queries.
+  rule {
+    target_label = "job"
+    replacement  = "windows_base"
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -110,7 +118,6 @@ loki.process "add_labels" {
 prometheus.exporter.windows "local" {
   enabled_collectors = [
     "cpu",
-    "cs",
     "logical_disk",
     "memory",
     "net",
@@ -121,9 +128,10 @@ prometheus.exporter.windows "local" {
     "time",
   ]
 
-  // Monitor a small set of core services for local testing
-  service = {
-    where_clause = "Name LIKE 'W32Time' OR Name LIKE 'WinRM' OR Name LIKE 'EventLog' OR Name LIKE 'Dnscache' OR Name LIKE 'Docker Desktop Service'"
+  // Monitor a small set of core services for local testing.
+  // Uses WMI WHERE clause syntax to filter the service collector.
+  service {
+    where_clause = "Name='W32Time' OR Name='WinRM' OR Name='EventLog' OR Name='Dnscache' OR Name='Docker Desktop Service'"
   }
 }
 

@@ -16,7 +16,7 @@
 | Phase 3: Alerting Rules and Routing | Completed | 8 tasks: 46 alert rules, Alertmanager routing + Teams template, Grafana notifiers, runbooks |
 | Phase 4: Grafana Dashboards | Completed | 4 dashboards (Windows, Linux, Infra Overview, Log Explorer) + customization guide |
 | Phase 5: Validation Tooling | Completed | 3 validators + runner, 12/12 tests passing, requirements.txt, docs |
-| Phase 5.5: Docker Compose PoC | In Progress | Local testing stack via Docker Desktop (pre-K8s validation) |
+| Phase 5.5: Docker Compose PoC | Completed | Local testing stack validated end-to-end (metrics, logs, recording rules) |
 | Phase 6: Mimir Migration | Pending | Long-term metrics storage (when ready to scale) |
 
 **Status Key**: Pending | In Progress | Completed | Blocked
@@ -85,6 +85,13 @@
 ### Tasks -- Documentation
 
 - [x] 13. Create Alloy deployment guide for Windows and Linux -- `docs/ALLOY_DEPLOYMENT.md`
+
+### PoC Validation Notes (Phase 5.5)
+
+- Alloy v1.13 uses River block syntax (`service {}` not `service = {}`); fixed across all 6 Alloy configs
+- Alloy v1.13 overrides scrape `job_name` with `integrations/windows`; added relabel rules to restore `windows_base`
+- The `cs` collector was removed in v1.13; its metrics merged into `os`, `memory`, and `cpu` collectors
+- `where_clause` inside the `service` block is deprecated (no-op in v1.13); retained for backward compatibility
 
 ### Risks
 
@@ -236,19 +243,27 @@
 
 **Goal**: Spin up the full monitoring stack locally via Docker Desktop to validate configs, dashboards, alert routing, and the Alloy-to-backend data pipeline before deploying to Kubernetes.
 
-**Status**: In Progress
+**Status**: Completed
 
 **Resource Budget**: ~2 GB RAM total (memory-limited containers for developer workstations)
 
 ### Tasks
 
-- [ ] 1. Create `docker-compose.yml` with Prometheus, Loki, Alertmanager, Grafana -- volume mounts, memory limits, health checks
-- [ ] 2. Create `docker-compose.override.yml` for local dev (debug ports, verbose logging)
-- [ ] 3. Create `.dockerignore` to exclude non-essential files
-- [ ] 4. Create local Alloy config for Windows host pointing at Docker stack -- `configs/alloy/local/`
-- [ ] 5. Create `scripts/poc_setup.py` for one-command startup with health validation
-- [ ] 6. Create `docs/LOCAL_TESTING.md` step-by-step guide
-- [ ] 7. Update PROJECT_PLAN.md to mark phase complete
+- [x] 1. Create `docker-compose.yml` with Prometheus, Loki, Alertmanager, Grafana -- volume mounts, memory limits, health checks
+- [x] 2. Create `docker-compose.override.yml` for local dev (debug ports, verbose logging)
+- [x] 3. Create `.dockerignore` to exclude non-essential files
+- [x] 4. Create local Alloy config for Windows host pointing at Docker stack -- `configs/alloy/local/`
+- [x] 5. Create `scripts/poc_setup.py` for one-command startup with health validation
+- [x] 6. Create `docs/LOCAL_TESTING.md` step-by-step guide
+- [x] 7. Update PROJECT_PLAN.md to mark phase complete
+
+### Implementation Notes
+
+- Prometheus and Alertmanager do not support `${VAR:-default}` env var substitution; configs use literal Docker service names
+- Prometheus volume mounts at `/prometheus` (image default) not `/prometheus/data` to avoid permission issues with `nobody` user
+- Alloy runs as standalone binary (not MSI service) for PoC; pointed at `configs/alloy/local/`
+- Full data pipeline validated: Alloy -> Prometheus (121 metrics, 4698 series), Alloy -> Loki (System + Application event logs)
+- Recording rules evaluating successfully (e.g., `instance:windows_cpu_utilization:ratio`)
 
 ### Risks
 
@@ -258,8 +273,9 @@
 
 ### Human Actions Required
 
-- [ ] Ensure Docker Desktop is installed and running
-- [ ] Download Grafana Alloy Windows binary (optional, for end-to-end testing)
+- [x] Ensure Docker Desktop is installed and running
+- [x] Download Grafana Alloy Windows binary (standalone zip, not MSI installer)
+- [ ] Stop/disable MSI-installed Alloy Windows service (requires admin terminal)
 - [ ] Create Teams webhook URL (optional, alerts log to stdout as fallback)
 
 ---

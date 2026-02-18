@@ -39,6 +39,26 @@ prometheus.relabel "add_standard_labels" {
     target_label = "hostname"
     replacement  = constants.hostname
   }
+
+  // Alloy v1.13+ uses "integrations/<exporter>" as the default job name
+  // for built-in exporters, overriding the scrape config's job_name.
+  // This rule forces the job label back to the expected value so it
+  // matches recording rules, alert rules, and dashboard queries.
+  // The actual job_name is set by each prometheus.scrape block (e.g.,
+  // "windows_base", "linux_base") and arrives as a source label.
+  rule {
+    source_labels = ["job"]
+    regex         = "integrations/windows"
+    target_label  = "job"
+    replacement   = "windows_base"
+  }
+
+  rule {
+    source_labels = ["job"]
+    regex         = "integrations/node_exporter"
+    target_label  = "job"
+    replacement   = "linux_base"
+  }
 }
 
 // Loki processing stage that injects standard labels into all log streams.

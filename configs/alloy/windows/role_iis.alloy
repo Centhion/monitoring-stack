@@ -38,8 +38,8 @@ prometheus.exporter.windows "iis" {
   ]
 
   // Monitor IIS-critical Windows services
-  service = {
-    where_clause = "Name LIKE 'W3SVC' OR Name LIKE 'WAS' OR Name LIKE 'IISADMIN' OR Name LIKE 'WMSVC'"
+  service {
+    where_clause = "Name='W3SVC' OR Name='WAS' OR Name='IISADMIN' OR Name='WMSVC'"
   }
 }
 

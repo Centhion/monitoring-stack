@@ -18,7 +18,8 @@
 prometheus.exporter.windows "base" {
   enabled_collectors = [
     "cpu",
-    "cs",             // Computer system: hostname, domain membership, physical memory
+    // "cs" collector was removed in Alloy v1.13; its metrics are now
+    // included in the "os", "memory", and "cpu" collectors.
     "logical_disk",   // Per-volume: free space, read/write bytes, IOPS, queue length
     "memory",         // System memory: available, committed, cache, page faults
     "net",            // Per-NIC: bytes sent/received, packets, errors, discards
@@ -34,8 +35,8 @@ prometheus.exporter.windows "base" {
   // services are reported which creates high cardinality. This regex
   // captures critical infrastructure services present on every server.
   // Role-specific configs add their own service filters.
-  service = {
-    where_clause = "Name LIKE 'W32Time' OR Name LIKE 'WinRM' OR Name LIKE 'EventLog' OR Name LIKE 'LanmanServer' OR Name LIKE 'LanmanWorkstation' OR Name LIKE 'Dhcp' OR Name LIKE 'Dnscache' OR Name LIKE 'TermService' OR Name LIKE 'wuauserv'"
+  service {
+    where_clause = "Name='W32Time' OR Name='WinRM' OR Name='EventLog' OR Name='LanmanServer' OR Name='LanmanWorkstation' OR Name='Dhcp' OR Name='Dnscache' OR Name='TermService' OR Name='wuauserv'"
   }
 }
 

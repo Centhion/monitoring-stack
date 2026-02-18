@@ -34,8 +34,8 @@ prometheus.exporter.windows "dc" {
 
   // Monitor AD-critical services. Combined with base.alloy service filter
   // using OR semantics since each exporter instance reports independently.
-  service = {
-    where_clause = "Name LIKE 'NTDS' OR Name LIKE 'DNS' OR Name LIKE 'Netlogon' OR Name LIKE 'DFSR' OR Name LIKE 'IsmServ' OR Name LIKE 'KDC' OR Name LIKE 'ADWS' OR Name LIKE 'Kdc'"
+  service {
+    where_clause = "Name='NTDS' OR Name='DNS' OR Name='Netlogon' OR Name='DFSR' OR Name='IsmServ' OR Name='KDC' OR Name='ADWS'"
   }
 }
 
