@@ -17,6 +17,7 @@
 | Phase 4: Grafana Dashboards | Completed | 4 dashboards (Windows, Linux, Infra Overview, Log Explorer) + customization guide |
 | Phase 5: Validation Tooling | Completed | 3 validators + runner, 12/12 tests passing, requirements.txt, docs |
 | Phase 5.5: Docker Compose PoC | Completed | Local testing stack validated end-to-end (metrics, logs, recording rules) |
+| Phase 5.7: Fleet Tagging and Deployment | In Progress | Inventory system, Ansible playbooks, tag validation for 500-2000 servers across 5-15+ sites |
 | Phase 6: Mimir Migration | Pending | Long-term metrics storage (when ready to scale) |
 
 **Status Key**: Pending | In Progress | Completed | Blocked
@@ -280,6 +281,86 @@
 
 ---
 
+## Phase 5.7: Fleet Tagging and Ansible Deployment Tooling
+
+**Goal**: Create a centralized inventory system for datacenter/role/environment tag assignment and Ansible playbooks to deploy Alloy with correct tags to 500-2000 servers across 5-15+ sites.
+
+**Status**: In Progress
+
+**Fleet Context**: ~16 AD domains consolidating to 1 over 18 months. Inventory must be AD-independent. Sites use short abbreviation codes (DV, SOL, SN, etc.). Multi-role servers are common (e.g., SQL + IIS on same host).
+
+### Tasks
+
+- [ ] 1. Create site registry -- `inventory/sites.yml`
+  - Central YAML defining all datacenter sites with metadata: code, display name, environment, timezone, AD domain, network segment
+  - Controlled vocabulary for valid roles: `dc, sql, iis, fileserver, docker, generic, exchange, print, app`
+  - Document extension point for adding new roles and OS types
+  - Complexity: Simple
+
+- [ ] 2. Create host inventory schema -- `inventory/hosts.yml`
+  - YAML mapping every server to its tags: hostname, site (references sites.yml), environment, roles (list for multi-role), os_type, os_build
+  - Multi-role support: roles field is a list (e.g., `[sql, iis]`)
+  - OS build tracked as precise version strings (e.g., `"10.0.20348"` for Server 2022, `"9.5"` for RHEL 9.5)
+  - Organized by site for readability, with schema header documenting valid values
+  - Complexity: Simple
+
+- [ ] 3. Create inventory tooling -- `scripts/fleet_inventory.py`
+  - Subcommand: `validate` -- validates hosts.yml against sites.yml (site codes, roles, os_type, required fields, no duplicate hostnames, warns on 3+ roles)
+  - Subcommand: `import-csv` -- converts CSV (from SCCM/CMDB export) to hosts.yml entries, merges without duplicates
+  - Subcommand: `generate-ansible` -- produces Ansible inventory with host groups by site/role/os/environment, host_vars for Alloy env vars, group_vars for endpoints and site metadata
+  - Subcommand: `stats` -- prints fleet summary (servers per site, per role, per OS, multi-role count, coverage gaps)
+  - Output directory: `inventory/generated/`
+  - Complexity: Medium
+
+- [ ] 4. Create Ansible playbook for Alloy deployment -- `ansible/deploy_alloy.yml`
+  - Ansible role `alloy_windows`: install MSI, deploy configs, set system env vars, configure and start service
+  - Ansible role `alloy_linux`: install package, deploy configs, set env file, configure systemd unit, start service
+  - Multi-role handling: copies role_*.alloy for EACH role in the host's roles list; ALLOY_ROLE set to primary (first) role
+  - Config deployment: common/*.alloy (always) + {os}/base.alloy + logs (always) + role_*.alloy (per role list)
+  - Environment variables set: ALLOY_ENV, ALLOY_DATACENTER, ALLOY_ROLE, PROMETHEUS_REMOTE_WRITE_URL, LOKI_WRITE_URL, plus role-specific vars
+  - Post-deploy validation: waits for :12345 health endpoint, verifies metrics are being scraped
+  - Complexity: Medium
+
+- [ ] 5. Create tag validation script -- `scripts/validate_fleet_tags.py`
+  - Queries Prometheus to audit tag compliance across the fleet
+  - Report categories: COMPLIANT (correct tags), DRIFT (wrong tags), MISSING (in inventory but not reporting), UNKNOWN (reporting but not in inventory)
+  - Filters: `--site`, `--role`, `--environment`
+  - Output formats: `--format table|json|csv`
+  - Accepts `--prometheus-url` (defaults to PROMETHEUS_URL env var)
+  - Complexity: Medium
+
+- [ ] 6. Create onboarding runbook -- `docs/FLEET_ONBOARDING.md`
+  - Step-by-step guide: adding a new site, adding servers, bulk CSV import, decommissioning
+  - Documents how to extend the role vocabulary and OS type list in sites.yml
+  - Troubleshooting section for common deployment issues (WinRM, permissions, config conflicts)
+  - Complexity: Simple
+
+### Architecture Notes
+
+- **Site metadata inheritance**: Hosts reference a site code; timezone, AD domain, and network segment come from sites.yml automatically. No duplication per host.
+- **Multi-role deployment**: Alloy loads all `.alloy` files in its config directory. Multiple role_*.alloy files coexist without conflict because each uses unique component labels (e.g., `prometheus.exporter.mssql "role_sql"`, `prometheus.exporter.iis "role_iis"`).
+- **ALLOY_ROLE for multi-role hosts**: Set to the primary (first) role in the list. All role configs are loaded regardless. The role label in Prometheus is the primary role; dashboards and alerts filter by it.
+- **OS build precision**: Free-form string field, not constrained to an enum. Captures exact build (e.g., `"10.0.17763.6893"` for a fully-patched Server 2019). Alloy also reports OS version as a metric label for runtime validation.
+- **Extensibility**: New roles are added by (1) adding to `valid_roles` in sites.yml, (2) creating a `role_*.alloy` config in the appropriate OS directory, (3) documenting in FLEET_ONBOARDING.md.
+
+### Risks
+
+- WinRM connectivity: Ansible managing Windows requires WinRM or OpenSSH. Most enterprise Windows fleets use WinRM with CredSSP or Kerberos auth. Mitigation: Document WinRM prerequisites; test one server first.
+- Domain consolidation: ~16 domains means Kerberos auth for Ansible may need multi-domain credential handling. Mitigation: Inventory tracks AD domain per site; Ansible can use per-host credentials or a service account with cross-domain trust.
+- Multi-role config conflicts: Two role configs in the same Alloy directory must not have conflicting component labels. Mitigation: Existing role configs use unique labels. Validation script checks for conflicts.
+- Hostname changes during domain migration: Servers may be renamed. Mitigation: Update hosts.yml; tag validation catches drift. Alloy uses constants.hostname (auto-detected).
+
+### Human Actions Required
+
+- [ ] Provide complete list of datacenter site codes with display name, timezone, AD domain, network segment
+- [ ] Provide initial host inventory (hostname, site, roles, OS type, OS build) -- CSV from SCCM, AD, or CMDB preferred
+- [ ] Ensure WinRM is enabled on target Windows servers (or OpenSSH)
+- [ ] Ensure SSH key access to target Linux servers from Ansible control node
+- [ ] Provide production Prometheus/Loki endpoint URLs
+- [ ] Designate one Windows and one Linux test server for initial deployment validation
+
+---
+
 ## Phase 6: Mimir Migration (Future)
 
 **Goal**: Replace Prometheus with Grafana Mimir for long-term metric storage and horizontal scaling.
@@ -316,6 +397,15 @@
 - [ ] Create Teams Incoming Webhook for monitoring channel
 - [ ] Provide SCOM monitor export/list for alert parity audit
 
+### Fleet Deployment (Phase 5.7)
+
+- [ ] Provide datacenter site codes with metadata (timezone, AD domain, network segment)
+- [ ] Provide host inventory export (hostname, site, roles, OS type, OS build)
+- [ ] Enable WinRM on target Windows servers (or OpenSSH)
+- [ ] Configure SSH key access to target Linux servers
+- [ ] Provide production Prometheus/Loki endpoint URLs
+- [ ] Designate one Windows + one Linux test server for validation
+
 ### During Development
 
 - [ ] Deploy Alloy to test Windows server
@@ -345,5 +435,5 @@
 
 ---
 
-*Document Version: 1.0*
+*Document Version: 1.1*
 *Last Updated: 2026-02-18*

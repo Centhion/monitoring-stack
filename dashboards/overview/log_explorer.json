@@ -988,7 +988,7 @@
         "skipUrlSync": false,
         "sort": 1,
         "type": "query",
-        "allValue": ".*"
+        "allValue": ".+"
       },
       {
         "current": {
@@ -1014,7 +1014,7 @@
         "skipUrlSync": false,
         "sort": 1,
         "type": "query",
-        "allValue": ".*"
+        "allValue": ".+"
       },
       {
         "current": {
@@ -1040,7 +1040,7 @@
         "skipUrlSync": false,
         "sort": 1,
         "type": "query",
-        "allValue": ".*"
+        "allValue": ".+"
       },
       {
         "current": {
@@ -1074,7 +1074,7 @@
         "query": "windows,linux",
         "skipUrlSync": false,
         "type": "custom",
-        "allValue": ".*"
+        "allValue": ".+"
       },
       {
         "current": {
@@ -1096,7 +1096,7 @@
         "query": "",
         "skipUrlSync": false,
         "type": "textbox",
-        "allValue": ".*"
+        "allValue": ".+"
       }
     ]
   },
