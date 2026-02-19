@@ -31,24 +31,13 @@ This file maintains continuity across work sessions. Each session summary is app
   - `be31f2c`: Replaced env var URLs with literal URLs in Grafana datasource provisioning
   - `c2be8f4`: Converted dashboard template variable `query` from object format to string format, added `allValue` and default `current`
 
-### In Progress
+- **All changes committed and pushed**: `01cec68` -- Log Explorer allValue fix, Phase 5.7 plan, session log. Pre-commit check caught Grafana password in SESSION_LOG.md; redacted before commit.
 
-- **Log Explorer `allValue` fix**: Code change is done in `dashboards/overview/log_explorer.json` but NOT YET COMMITTED. Grafana has been restarted with the fix. User has not yet confirmed the Loki parse error is resolved.
-
-- **Phase 5.7 PROJECT_PLAN.md update**: Changes to `docs/PROJECT_PLAN.md` adding Phase 5.7 are NOT YET COMMITTED.
-
-### Uncommitted Files
-
-```
-modified:   dashboards/overview/log_explorer.json   (allValue .* -> .+)
-modified:   docs/PROJECT_PLAN.md                    (Phase 5.7 added)
-```
+- **User confirmed dashboards working**: Log Explorer and other dashboards showing data. Full pipeline validated end-to-end.
 
 ### Blockers
 
-- **MSI Alloy service still running**: The MSI-installed Alloy Windows service (PID 56480) is still running on the user's workstation alongside the standalone binary. Needs admin terminal to run `net stop Alloy; sc config Alloy start= disabled`. Not blocking development, but should be cleaned up.
-
-- **Dashboard data verification**: User has not yet confirmed that the Windows Server Overview and Infrastructure Overview dashboards are displaying data after all the template variable fixes. The recording rules and datasource are confirmed working, so this should be resolved, but needs visual confirmation.
+- **MSI Alloy service still running**: The MSI-installed Alloy Windows service is still running on the user's workstation alongside the standalone binary. Needs admin terminal to run `net stop Alloy; sc config Alloy start= disabled`. Not blocking development, but should be cleaned up.
 
 - **Phase 5.7 human dependencies**: Cannot begin implementation tasks #4-5 (Ansible playbook, tag validation) without: datacenter site list with metadata, host inventory export, production Prometheus/Loki URLs, and test servers with WinRM/SSH access.
 
@@ -65,11 +54,10 @@ modified:   docs/PROJECT_PLAN.md                    (Phase 5.7 added)
 
 ### Next Session
 
-1. **Commit uncommitted changes**: Run `/commit` for the Log Explorer fix and PROJECT_PLAN.md Phase 5.7 addition. Push to remote.
-2. **Begin Phase 5.7 Task 1**: Create `inventory/sites.yml` with schema, example entries, and role/OS vocabulary.
-3. **Begin Phase 5.7 Task 2**: Create `inventory/hosts.yml` with schema and example entries demonstrating multi-role, multiple OS types, and precise OS builds.
-4. **Begin Phase 5.7 Task 3**: Create `scripts/fleet_inventory.py` with validate, import-csv, generate-ansible, and stats subcommands.
-5. **Verify dashboards**: Confirm Windows Server Overview and Log Explorer display data correctly in Grafana.
+1. **Begin Phase 5.7 Task 1**: Create `inventory/sites.yml` with schema, example entries (DV, SOL, SN), and role/OS vocabulary. Include extension documentation.
+2. **Begin Phase 5.7 Task 2**: Create `inventory/hosts.yml` with schema and example entries demonstrating multi-role servers, multiple OS types, and precise OS builds.
+3. **Begin Phase 5.7 Task 3**: Create `scripts/fleet_inventory.py` with validate, import-csv, generate-ansible, and stats subcommands.
+4. **Phase 5.7 Tasks 4-6** (Ansible playbook, tag validation, onboarding runbook) can proceed in parallel with tasks 1-3 but will need human inputs (site list, host inventory) before they can be fully tested.
 
 ### Context
 
