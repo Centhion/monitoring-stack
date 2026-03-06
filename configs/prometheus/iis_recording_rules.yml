@@ -1,0 +1,90 @@
+# =============================================================================
+# IIS Web Server Recording Rules
+# =============================================================================
+# Pre-compute IIS-specific aggregations for the IIS dashboard.
+# These rules depend on metrics from the windows_exporter iis collector
+# deployed via configs/alloy/windows/role_iis.alloy.
+#
+# Naming convention: <namespace>:<metric>:<aggregation>
+# Changing a rule name here requires updating the IIS dashboard panels.
+# =============================================================================
+
+groups:
+  - name: iis_recording_rules
+    interval: 30s
+    rules:
+      # Total request rate across all IIS sites per server.
+      # Aggregates all HTTP methods and status codes into a single rate.
+      - record: instance:iis_request_rate:rate5m
+        expr: |
+          sum by (instance, hostname, environment, datacenter, role) (
+            rate(windows_iis_requests_total[5m])
+          )
+
+      # 5xx server error ratio: proportion of all requests returning 500-599.
+      # Used by the IIS dashboard overview stat and error trend panels.
+      # Returns NaN when there are zero requests (handled by Grafana as "no data").
+      - record: instance:iis_5xx_error:ratio
+        expr: |
+          sum by (instance, hostname, environment, datacenter, role) (
+            rate(windows_iis_requests_total{status_code=~"5.."}[5m])
+          )
+          /
+          sum by (instance, hostname, environment, datacenter, role) (
+            rate(windows_iis_requests_total[5m])
+          )
+
+      # 4xx client error ratio: proportion of all requests returning 400-499.
+      # High 4xx rates may indicate misconfigured clients, broken links,
+      # or scanning activity rather than server-side issues.
+      - record: instance:iis_4xx_error:ratio
+        expr: |
+          sum by (instance, hostname, environment, datacenter, role) (
+            rate(windows_iis_requests_total{status_code=~"4.."}[5m])
+          )
+          /
+          sum by (instance, hostname, environment, datacenter, role) (
+            rate(windows_iis_requests_total[5m])
+          )
+
+      # Per-site request rate preserving the site label for site-level filtering.
+      # The site label comes from the windows_exporter iis collector and matches
+      # the IIS site name configured in IIS Manager.
+      - record: instance:iis_site_request_rate:rate5m
+        expr: |
+          sum by (instance, hostname, environment, datacenter, role, site) (
+            rate(windows_iis_requests_total[5m])
+          )
+
+      # Per-site 5xx error rate for identifying which site is generating errors.
+      - record: instance:iis_site_5xx_rate:rate5m
+        expr: |
+          sum by (instance, hostname, environment, datacenter, role, site) (
+            rate(windows_iis_requests_total{status_code=~"5.."}[5m])
+          )
+
+      # Total throughput (bytes sent + received) per server.
+      # Combines upload and download traffic for bandwidth monitoring.
+      - record: instance:iis_throughput_bytes:rate5m
+        expr: |
+          sum by (instance, hostname, environment, datacenter, role) (
+            rate(windows_iis_sent_bytes_total[5m])
+            +
+            rate(windows_iis_received_bytes_total[5m])
+          )
+
+      # Per-site throughput for identifying bandwidth-heavy sites.
+      - record: instance:iis_site_throughput_bytes:rate5m
+        expr: |
+          sum by (instance, hostname, environment, datacenter, role, site) (
+            rate(windows_iis_sent_bytes_total[5m])
+            +
+            rate(windows_iis_received_bytes_total[5m])
+          )
+
+      # Total active connections across all IIS sites per server.
+      - record: instance:iis_active_connections:total
+        expr: |
+          sum by (instance, hostname, environment, datacenter, role) (
+            windows_iis_current_connections
+          )

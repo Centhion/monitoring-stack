@@ -20,6 +20,14 @@
 | Phase 5.7: Fleet Tagging and Deployment | In Progress | Inventory system, Ansible playbooks, tag validation for 500-2000 servers across 5-15+ sites |
 | Phase 5.8: Generalization and K8s Readiness | In Progress | Strip org-specific content, Helm chart, fork-and-deploy template |
 | Phase 6: Mimir Migration | Pending | Long-term metrics storage (when ready to scale) |
+| Phase 7A: SNMP Network Device Monitoring | Pending | Polling (native Alloy) + trap ingestion (snmptrapd pipeline) |
+| Phase 7B: Hardware/HCI Health Monitoring | Pending | Redfish API for HPE SimpliVity (iLO) and Dell (iDRAC) |
+| Phase 7C: SSL Certificate Monitoring | Pending | Blackbox probing for internal PKI + public DigiCert certs |
+| Phase 7D: Lansweeper Integration | Pending | Custom Python exporter for asset intelligence via GraphQL API |
+| Phase 7E: Cloud Infrastructure Monitoring | Pending | Stub configs for AWS CloudWatch / Azure Monitor (when ready) |
+| Phase 7F: IIS Dedicated Dashboard | Pending | Dashboard for existing IIS role metrics and access logs |
+| Phase 7G: Agentless Collection | Blocked | WinRM/SSH for edge cases -- pending internal use case review |
+| Phase 7H: Dashboard Hub Architecture | Pending | Enterprise NOC + per-site drill-down dashboards for location-centric monitoring |
 
 **Status Key**: Pending | In Progress | Completed | Blocked
 
@@ -509,6 +517,590 @@
 
 ---
 
+## Phase 7A: SNMP Network Device Monitoring
+
+**Goal**: Poll any SNMP-capable device (switches, routers, firewalls, UPS, NAS, PDUs) via native Alloy SNMP exporter and ingest SNMP traps as logs via snmptrapd-to-Loki pipeline.
+
+**Status**: Pending
+
+**Fleet Context**: Cisco switches, Palo Alto firewalls, Ubiquiti network hardware. No Aruba/HPE or Fortinet network gear. Template designed for extensibility -- adding new vendor MIBs is documented.
+
+**Integration Pattern**: Each sub-phase follows the full SDLC: Alloy/exporter config -> Docker Compose PoC -> dashboard -> alerts -> Helm chart -> validators -> documentation.
+
+### Tasks
+
+- [ ] 1. Create SNMP module configs -- `configs/alloy/snmp/snmp_modules.yml`
+  - Standard modules: `if_mib` (interfaces), `entity_mib` (chassis), `host_resources` (generic)
+  - Vendor modules: `cisco` (switches), `paloalto` (firewalls), `ubiquiti` (APs/switches)
+  - Infrastructure modules: `ups_mib` (UPS/PDU, RFC 1628)
+  - Each module is opt-in per device target
+  - Generated via snmp_exporter generator tool from MIB files
+  - Complexity: Medium
+  - Dependencies: None
+
+- [ ] 2. Create Alloy SNMP gateway config -- `configs/alloy/roles/role_snmp_gateway.alloy`
+  - Uses `prometheus.exporter.snmp` with module configs from Task 1
+  - Target list driven by discovery.file reading targets.yml
+  - Walk params for SNMPv2c (community string) and SNMPv3 (auth/priv)
+  - Standard label injection: site, environment, device_type, device_name
+  - Complexity: Medium
+  - Dependencies: Task 1
+
+- [ ] 3. Create SNMP trap receiver pipeline
+  - Add snmptrapd container to Docker Compose (net-snmp image, UDP/162)
+  - Configure trap-to-syslog forwarding in snmptrapd.conf
+  - Add `loki.source.syslog` component to Alloy for trap ingestion
+  - Trap log labels: source_ip, trap_oid, severity
+  - Rate limiting in snmptrapd config to prevent Loki flood from noisy devices
+  - Complexity: Medium
+  - Dependencies: None (parallel with Tasks 1-2)
+
+- [ ] 4. Create SNMP device discovery file -- `configs/alloy/snmp/targets.yml`
+  - YAML-based target inventory: address, module, community/auth, site, device_type labels
+  - Template with examples for each device type (Cisco switch, Palo Alto firewall, Ubiquiti AP)
+  - Used by `discovery.file` in Alloy SNMP gateway config
+  - Complexity: Simple
+  - Dependencies: Task 2
+
+- [ ] 5. Create Network Infrastructure dashboard -- `dashboards/network/network_overview.json`
+  - Interface utilization, error rates, bandwidth per device
+  - Device health summary (up/down, CPU/memory where available via SNMP)
+  - Top-N worst interfaces panel
+  - Template vars: site, device_type, device_name
+  - Complexity: Medium
+  - Dependencies: Task 2
+
+- [ ] 6. Create SNMP Trap Log Explorer dashboard -- `dashboards/network/trap_explorer.json`
+  - LogQL queries against trap logs in Loki
+  - Filter by source device, trap OID, severity
+  - Volume over time, recent traps table
+  - Complexity: Simple
+  - Dependencies: Task 3
+
+- [ ] 7. Create SNMP alert rules -- `alerts/prometheus/snmp_alerts.yml`
+  - Interface down, high utilization (>80%), error rate spike
+  - Device unreachable (SNMP timeout)
+  - UPS on battery, UPS low battery (if UPS monitored)
+  - Complexity: Simple
+  - Dependencies: Task 2
+
+- [ ] 8. Add snmptrapd to Helm chart
+  - Optional sidecar or standalone Deployment (enabled: false by default)
+  - ConfigMap for snmptrapd.conf
+  - Service for UDP/162 ingress
+  - Complexity: Simple
+  - Dependencies: Task 3
+
+- [ ] 9. Update validators for SNMP configs
+  - Validate snmp_modules.yml structure
+  - Validate targets.yml schema (required fields, valid modules)
+  - Complexity: Simple
+  - Dependencies: Tasks 1, 4
+
+- [ ] 10. Documentation -- `docs/SNMP_MONITORING.md`
+  - Setup guide: adding devices, choosing modules, SNMPv3 auth
+  - Trap receiver architecture and configuration
+  - Extending with custom vendor MIBs (generator workflow)
+  - Complexity: Simple
+
+### Risks
+
+- MIB diversity: vendor-specific MIBs are vast. Mitigation: ship modules for fleet vendors (Cisco, Palo Alto, Ubiquiti), document generator workflow for adding new vendors.
+- SNMPv3 credential management: auth/priv passwords need secure storage. Mitigation: environment variables for credentials, Helm secrets for K8s deployment.
+- Trap flood: noisy devices can overwhelm Loki ingestion. Mitigation: rate limiting in snmptrapd config, Loki stream limits already configured.
+
+### Human Actions Required
+
+- [ ] Provide list of network device types and models in the fleet
+- [ ] Provide SNMP community strings or SNMPv3 credentials
+- [ ] Identify which devices should send traps (requires device-side configuration)
+- [ ] Verify network access from monitoring stack to device management interfaces
+
+---
+
+## Phase 7B: Hardware/HCI Health Monitoring (Redfish)
+
+**Goal**: Monitor HPE SimpliVity (iLO) and Dell (iDRAC) hardware health via Redfish API -- fans, PSUs, temperatures, physical disks, memory DIMMs, overall chassis status.
+
+**Status**: Pending
+
+**Fleet Context**: Mixed HPE SimpliVity and Dell hardware. Firmware kept current -- no Redfish compatibility concerns.
+
+### Tasks
+
+- [ ] 1. Evaluate and select Redfish exporter
+  - Compare `idrac_exporter` (Redfish, supports Dell + HPE) vs `ipmi_exporter` (IPMI protocol, requires freeipmi)
+  - Test against both iLO and iDRAC endpoints if possible
+  - Recommend single exporter or one per vendor
+  - Deliver written recommendation with trade-offs
+  - Complexity: Medium (research task)
+  - Dependencies: None
+
+- [ ] 2. Create Redfish exporter config -- `configs/exporters/redfish/`
+  - Exporter configuration for multi-target scraping pattern
+  - Credential management via environment variables (never in config files)
+  - Target list with BMC addresses, vendor label, site label
+  - Complexity: Simple
+  - Dependencies: Task 1
+
+- [ ] 3. Create Alloy scrape config -- `configs/alloy/roles/role_hardware_monitor.alloy`
+  - `prometheus.scrape` targeting the Redfish exporter
+  - Relabel rules to inject standard labels (site, environment, hostname)
+  - Multi-target pattern: one exporter instance scrapes many BMCs
+  - 60-120s scrape interval (hardware state changes slowly, Redfish queries are heavier than SNMP)
+  - Complexity: Simple
+  - Dependencies: Task 2
+
+- [ ] 4. Add Redfish exporter to Docker Compose
+  - Container with config mount
+  - Mock/simulator for local testing if available
+  - Complexity: Simple
+  - Dependencies: Task 2
+
+- [ ] 5. Create Hardware Health dashboard -- `dashboards/hardware/hardware_overview.json`
+  - Chassis health summary (OK/Warning/Critical per server)
+  - Temperature gauges per component
+  - Fan speed and PSU status
+  - Physical disk health and predictive failure
+  - Memory DIMM status
+  - Template vars: site, vendor, server_name
+  - Complexity: Medium
+  - Dependencies: Task 3
+
+- [ ] 6. Create hardware alert rules -- `alerts/prometheus/hardware_alerts.yml`
+  - Component degraded/failed (PSU, fan, disk, DIMM)
+  - Temperature threshold exceeded
+  - Chassis intrusion detected
+  - BMC unreachable
+  - Complexity: Simple
+  - Dependencies: Task 3
+
+- [ ] 7. Add Redfish exporter to Helm chart
+  - Optional Deployment (enabled: false by default)
+  - Secret for BMC credentials
+  - ConfigMap for target list
+  - Complexity: Simple
+  - Dependencies: Task 4
+
+- [ ] 8. Documentation -- `docs/HARDWARE_MONITORING.md`
+  - Redfish API prerequisites (iLO/iDRAC user accounts, network access)
+  - Adding new servers to hardware monitoring
+  - Credential security best practices
+  - Complexity: Simple
+
+### Risks
+
+- Credential management: BMC passwords are sensitive. Mitigation: Helm secrets, environment variables, never stored in config files.
+- Polling overhead: Redfish queries are heavier than SNMP. Mitigation: 60-120s scrape interval, hardware state changes slowly.
+- Vendor metric differences: iLO and iDRAC may expose different Redfish schemas. Mitigation: exporter research task evaluates compatibility.
+
+### Human Actions Required
+
+- [ ] Create read-only BMC service accounts for monitoring on iLO and iDRAC
+- [ ] Provide BMC IP addresses or DNS names for monitored servers
+- [ ] Verify network access from monitoring stack to BMC management network (often a separate VLAN)
+
+---
+
+## Phase 7C: SSL Certificate Monitoring
+
+**Goal**: Track certificate expiry for all internal PKI and public DigiCert certificates with dashboards and proactive alerting. Accuracy is the top priority -- no certificate should expire unnoticed.
+
+**Status**: Pending
+
+**Architecture Decision Pending**: Task 1 is a research gate. The approach (blackbox probing, Lansweeper API, DigiCert API, or combination) will be decided based on findings. Blackbox probing is the baseline -- it works today with native Alloy components.
+
+### Tasks
+
+- [ ] 1. Research certificate data sources and recommend approach
+  - Option A: Blackbox exporter (native Alloy) -- probes HTTPS/TLS endpoints, reports `probe_ssl_earliest_cert_expiry`
+  - Option B: Lansweeper API (if it inventories cert data with expiry) -- depends on Phase 7D Task 1 findings
+  - Option C: x509-certificate-exporter (standalone) -- scans cert files on disk for non-HTTP services
+  - Option D: DigiCert CertCentral API -- direct public cert inventory for DigiCert-managed certs
+  - Evaluate accuracy, coverage, and maintenance burden of each
+  - Deliver written recommendation with trade-offs
+  - Complexity: Medium (research)
+  - Dependencies: Phase 7D Task 1 findings (Lansweeper API capabilities)
+
+- [ ] 2. Create certificate endpoint inventory -- `configs/alloy/certs/endpoints.yml`
+  - YAML list of HTTPS/TLS endpoints to probe (internal + public)
+  - Fields: url, name, environment, cert_type (pki/public), owner
+  - Complexity: Simple
+  - Dependencies: Task 1 (approach decision)
+
+- [ ] 3. Create Alloy blackbox config -- `configs/alloy/roles/role_cert_monitor.alloy`
+  - `prometheus.exporter.blackbox` with http_2xx_tls module
+  - Target list from endpoints.yml via `discovery.file`
+  - Expose `probe_ssl_earliest_cert_expiry` metric
+  - Support for non-HTTP TLS (LDAPS, SMTP/TLS) via tcp_tls module
+  - Complexity: Medium
+  - Dependencies: Task 2
+
+- [ ] 4. Create blackbox module config -- `configs/alloy/certs/blackbox_modules.yml`
+  - `http_2xx_tls` module: validate cert chain, follow redirects, configurable timeout
+  - `tcp_tls` module: for non-HTTP TLS services (LDAPS on 636, SMTP/TLS on 587)
+  - Internal CA trust: mount point for custom CA bundle
+  - Complexity: Simple
+  - Dependencies: None
+
+- [ ] 5. Create Certificate Monitoring dashboard -- `dashboards/certs/certificate_overview.json`
+  - Stat panels: total certs monitored, expiring <30d, expiring <7d, expired
+  - Table: all certs with days until expiry, issuer, cert_type, owner, endpoint
+  - Color-coded: green (>90d), yellow (30-90d), orange (<30d), red (<7d)
+  - Expiry timeline: upcoming expirations as calendar/timeline view
+  - Template vars: cert_type (pki/public), environment, owner
+  - Complexity: Medium
+  - Dependencies: Task 3
+
+- [ ] 6. Create certificate alert rules -- `alerts/prometheus/cert_alerts.yml`
+  - CertExpiringSoon (30 days) -- warning
+  - CertExpiringCritical (7 days) -- critical
+  - CertExpired (0 days) -- critical
+  - CertProbeFailure (endpoint unreachable) -- warning
+  - Complexity: Simple
+  - Dependencies: Task 3
+
+- [ ] 7. Add blackbox testing to Docker Compose PoC
+  - Blackbox is embedded in Alloy -- just needs config mount
+  - Create self-signed cert endpoint for local validation testing
+  - Complexity: Simple
+  - Dependencies: Task 3
+
+- [ ] 8. Update Helm chart for cert monitoring
+  - ConfigMap for endpoints.yml and blackbox_modules.yml
+  - Volume mount for custom CA bundle (internal PKI trust)
+  - Complexity: Simple
+  - Dependencies: Task 7
+
+- [ ] 9. Documentation -- `docs/CERTIFICATE_MONITORING.md`
+  - Adding endpoints to monitoring (internal and public)
+  - Alert thresholds and response procedures
+  - Internal PKI vs public cert workflows
+  - Blackbox probe behavior: reports earliest expiry in chain (may be intermediate, not leaf)
+  - Complexity: Simple
+
+### Risks
+
+- Endpoint reachability: monitoring stack must have network access to all HTTPS endpoints. Mitigation: document firewall requirements.
+- Internal PKI trust: blackbox prober needs to trust internal CA root/intermediate certs. Mitigation: CA bundle mount in Alloy container.
+- Cert chain reporting: blackbox reports earliest expiry in chain (could be intermediate, not leaf). Mitigation: document behavior, consider x509-exporter supplement for file-based validation.
+- Inventory completeness: missing endpoints means missing certs. Mitigation: Lansweeper integration (Phase 7D) as supplementary discovery source.
+
+### Human Actions Required
+
+- [ ] Provide initial list of HTTPS/TLS endpoints to monitor (internal + public)
+- [ ] Provide internal CA root and intermediate certificates for trust chain
+- [ ] Confirm DigiCert CertCentral API access availability (if using direct API)
+- [ ] Review alert thresholds (30d warning, 7d critical are defaults)
+
+---
+
+## Phase 7D: Lansweeper Integration
+
+**Goal**: Bridge Lansweeper asset intelligence into the monitoring stack via a custom Python exporter querying the Lansweeper GraphQL API. Potentially serves as supplementary data source for certificate monitoring (Phase 7C).
+
+**Status**: Pending -- requires Lansweeper API access for research
+
+**Architecture**: Custom Python service using `prometheus_client` library exposes a `/metrics` HTTP endpoint. Alloy scrapes it like any other exporter. Queries Lansweeper GraphQL API on a configurable interval with response caching.
+
+### Tasks
+
+- [ ] 1. Research Lansweeper GraphQL API capabilities
+  - Document available data: assets, hardware inventory, software, warranties, certificates
+  - Test API access with a Personal Access Token (PAT)
+  - Identify exact GraphQL fields for certificate data (expiry dates, issuers, subjects)
+  - Determine rate limits, pagination behavior, and query cost
+  - Evaluate whether Lansweeper cert data is accurate/complete enough for Phase 7C
+  - Deliver findings document
+  - Complexity: Medium (research)
+  - Dependencies: Lansweeper PAT from IT team
+
+- [ ] 2. Create Lansweeper Prometheus exporter -- `scripts/lansweeper_exporter.py`
+  - Python service using `prometheus_client` library
+  - Queries Lansweeper GraphQL API on configurable interval (default: 5 minutes)
+  - Response caching to respect rate limits
+  - Exposes gauges: asset counts by type/site/OS, warranty expiry, certificate expiry (if available), software compliance
+  - HTTP `/metrics` endpoint for Alloy/Prometheus scraping
+  - Configurable via environment variables (API key, site IDs, scrape interval, endpoint URL)
+  - Complexity: Complex
+  - Dependencies: Task 1
+
+- [ ] 3. Create Alloy scrape config for Lansweeper exporter
+  - `prometheus.scrape` targeting the exporter endpoint
+  - Standard label injection
+  - Complexity: Simple
+  - Dependencies: Task 2
+
+- [ ] 4. Create Lansweeper Asset dashboard -- `dashboards/assets/asset_overview.json`
+  - Asset inventory by site, OS, device type
+  - Warranty expiration tracking and timeline
+  - Certificate data panels (if Lansweeper provides it -- may feed into Phase 7C dashboard)
+  - Software compliance overview
+  - Complexity: Medium
+  - Dependencies: Task 2
+
+- [ ] 5. Add Lansweeper exporter to Docker Compose and Helm chart
+  - Container running the Python exporter
+  - Secret for API key
+  - ConfigMap for exporter settings
+  - Complexity: Simple
+  - Dependencies: Task 2
+
+- [ ] 6. Documentation -- `docs/LANSWEEPER_INTEGRATION.md`
+  - API setup and PAT creation in Lansweeper admin console
+  - Available metrics and their GraphQL sources
+  - Extending with additional GraphQL queries
+  - Complexity: Simple
+
+### Risks
+
+- API access: Lansweeper may have rate limits or restricted field access depending on license tier. Mitigation: research task first, cache-heavy exporter design.
+- Cert data availability: Lansweeper may not expose certificate details via API (new implementation being rolled out). Mitigation: Phase 7C blackbox probing is the primary cert source; Lansweeper is supplementary.
+- API stability: Lansweeper GraphQL schema may change between versions. Mitigation: version-pin queries, add schema validation, document API version tested against.
+
+### Human Actions Required
+
+- [ ] Create Lansweeper API Personal Access Token with read permissions
+- [ ] Confirm which Lansweeper sites/scopes to query
+- [ ] Provide Lansweeper API endpoint URL (cloud: api.lansweeper.com or on-prem)
+
+---
+
+## Phase 7E: Cloud Infrastructure Monitoring (Stub)
+
+**Goal**: Placeholder configs for AWS CloudWatch and Azure Monitor integration via native Alloy exporters. Activated when cloud resources are deployed.
+
+**Status**: Pending -- no cloud resources to monitor yet
+
+### Tasks
+
+- [ ] 1. Create stub Alloy configs for cloud exporters
+  - `configs/alloy/cloud/aws_cloudwatch.alloy.example` -- commented, with instructions
+  - `configs/alloy/cloud/azure_monitor.alloy.example` -- commented, with instructions
+  - Documents required IAM roles / Azure service principals
+  - Complexity: Simple
+  - Dependencies: None
+
+- [ ] 2. Create stub Helm values for cloud integration
+  - values.yaml additions with `enabled: false`
+  - Document required credentials and permissions per provider
+  - Complexity: Simple
+  - Dependencies: None
+
+- [ ] 3. Documentation -- `docs/CLOUD_MONITORING.md`
+  - Prerequisites per cloud provider (IAM, service principal, API access)
+  - Which metrics are available (EC2, RDS, Azure VMs, etc.)
+  - Activation workflow
+  - Complexity: Simple
+
+### Human Actions Required
+
+- [ ] Identify which cloud provider(s) are in use (when ready)
+- [ ] Create IAM role or Azure service principal with read-only metrics access
+
+---
+
+## Phase 7F: IIS Dedicated Dashboard
+
+**Goal**: Build a dedicated IIS Web Server dashboard. The Alloy role config (`role_iis.alloy`) and alert rules (`role_alerts.yml`) already exist and are proven -- IIS metrics are collected but only visible in the generic Windows overview dashboard.
+
+**Status**: Pending
+
+### Tasks
+
+- [ ] 1. Create IIS Server dashboard -- `dashboards/windows/iis_overview.json`
+  - Per-site request rates (GET, POST, PUT, DELETE breakdown)
+  - 5xx and 4xx error rates with status code breakdown
+  - Active connections and connection rate over time
+  - Bytes sent/received throughput per site
+  - App pool worker process health and recycle counts
+  - W3C access log volume and top status codes (LogQL from Loki)
+  - Request queue length
+  - Template vars: environment, datacenter, hostname, site_name
+  - Complexity: Medium
+  - Dependencies: None (IIS Alloy config and alerts already exist)
+
+- [ ] 2. Create IIS recording rules -- `configs/prometheus/iis_recording_rules.yml`
+  - Pre-computed request rates and error ratios per site
+  - Connection rate aggregations
+  - Complexity: Simple
+  - Dependencies: None
+
+- [ ] 3. Update Grafana dashboard provisioning for new directories
+  - Add `network/`, `hardware/`, `certs/`, `assets/` to provisioning config
+  - One-time task that covers all Phase 7 sub-phases
+  - Complexity: Simple
+  - Dependencies: None
+
+### Risks
+
+- Minimal. IIS metrics are already collected and validated in the Docker Compose PoC.
+
+### Human Actions Required
+
+- None (uses existing Alloy config and metrics)
+
+---
+
+## Phase 7G: Agentless Collection (Edge Cases)
+
+**Goal**: WinRM and SSH-based remote metric and log collection for devices where Alloy agent installation is not possible (vendor appliances, embedded systems, locked-down hosts).
+
+**Status**: Blocked -- requires internal use case identification before any implementation
+
+**Gate**: Task 1 must produce a finite target list with justification before any code is written. This phase does not proceed speculatively.
+
+### Tasks
+
+- [ ] 1. Identify agentless targets (INTERNAL ACTION)
+  - Catalog devices where agent installation is blocked
+  - Document reason for each (vendor restriction, no OS access, embedded firmware, etc.)
+  - Classify: WinRM-capable vs SSH-capable vs neither
+  - Deliver target list with justification
+  - Complexity: Simple (process, not code)
+  - Dependencies: Internal team review
+
+- [ ] 2. Design agentless collection architecture
+  - WinRM: Alloy proxy instance running PowerShell scrapers remotely, or script_exporter executing remote commands
+  - SSH: Alloy proxy instance with remote node_exporter textfile collector pushed via SCP, or SSH-based command execution
+  - Architecture decision: one proxy per site vs centralized
+  - Complexity: Medium
+  - Dependencies: Task 1 (must know what devices and what to collect)
+
+- [ ] 3. Create proxy Alloy configs -- `configs/alloy/roles/role_agentless_proxy.alloy`
+  - Complexity: Medium
+  - Dependencies: Task 2
+
+- [ ] 4. Create agentless targets inventory -- `configs/alloy/agentless/targets.yml`
+  - Complexity: Simple
+  - Dependencies: Task 1
+
+- [ ] 5. Alert rules and dashboard panels for agentless targets
+  - Complexity: Simple
+  - Dependencies: Task 3
+
+- [ ] 6. Documentation -- `docs/AGENTLESS_MONITORING.md`
+  - Decision tree: when to use agentless vs agent-based
+  - Security considerations (credential storage, WinRM hardening, SSH key management)
+  - Complexity: Simple
+
+### Risks
+
+- Scope creep: agentless can become a rabbit hole if not scoped tightly. Mitigation: strict gate on Task 1 -- finite target list required before implementation.
+- Credential management: WinRM/SSH credentials for remote hosts are sensitive. Mitigation: Kerberos delegation or SSH key auth, never stored in config files.
+- Reliability: remote collection is inherently less reliable than local agent. Mitigation: document SLA expectations, add probe-up alerts for agentless targets.
+
+### Human Actions Required
+
+- [ ] Identify devices where agent installation is not possible
+- [ ] Document reason for each (vendor restriction, embedded firmware, access limitation, etc.)
+- [ ] Provide WinRM/SSH credentials or authentication method for each target
+- [ ] Approve agentless scope before implementation begins
+
+---
+
+## Phase 7H: Dashboard Hub Architecture
+
+**Goal**: Create a location-centric navigation layer across all monitoring domains. Two dashboards: an Enterprise NOC view showing all sites at a glance, and a Site Overview dashboard showing all monitored infrastructure at a single resort/location with drill-down links to detailed dashboards.
+
+**Status**: Pending
+
+**Audience**: Both central NOC team (multi-site comparison, problem identification) and resort IT staff (single-site deep visibility, troubleshooting).
+
+**Scope**: Servers and actively monitored infrastructure only. Asset/endpoint inventory is handled by Lansweeper separately -- no overlap.
+
+**Design Principle**: These dashboards are additive -- they consume metrics from all other phases. Each Phase 7 sub-phase adds a new row/section to the Site Overview and a new column to the Enterprise NOC grid. Ship the framework with server + IIS data now; SNMP, hardware, and cert sections land as those phases complete.
+
+### Tasks
+
+- [ ] 1. Create Enterprise NOC dashboard -- `dashboards/overview/enterprise_noc.json`
+  - Multi-site health grid: one row per datacenter/site, columns for each monitoring domain
+  - Domain columns (grow as phases ship):
+    - Servers: count, avg CPU, avg memory, services down
+    - IIS: request rate, 5xx error rate (when Phase 7F metrics exist)
+    - Network: devices up/down, interface errors (when Phase 7A ships)
+    - Hardware: chassis health OK/warning/critical count (when Phase 7B ships)
+    - Certificates: expiring <30d count (when Phase 7C ships)
+  - Active alert count per site with severity breakdown
+  - Top-N worst sites ranking (by combined health score)
+  - Each site name is a clickable link to the Site Overview dashboard pre-filtered to that site
+  - Template vars: environment (for filtering prod/staging/dev)
+  - Complexity: Medium
+  - Dependencies: Phase 7F complete (server + IIS recording rules provide initial data)
+
+- [ ] 2. Create Site Overview dashboard -- `dashboards/overview/site_overview.json`
+  - Single `datacenter` variable (single-select, not multi) as the site selector
+  - Row: Site Health Summary
+    - Stat panels: total servers, total alerts, total services down, uptime SLA %
+  - Row: Server Health
+    - Windows server count, avg CPU, avg memory, worst disk free
+    - Linux server count, avg CPU, avg memory, worst disk free
+    - Link to Windows/Linux Overview dashboards (inherits site filter)
+  - Row: IIS Web Services
+    - Total request rate, 5xx error rate, active connections
+    - Link to IIS Overview dashboard (inherits site filter)
+  - Row: Network Infrastructure (placeholder until Phase 7A)
+    - Devices up/down, worst interface utilization, recent traps
+    - Link to Network Overview dashboard
+  - Row: Hardware Health (placeholder until Phase 7B)
+    - Chassis health summary, temperature warnings, disk predictive failures
+    - Link to Hardware Health dashboard
+  - Row: Certificate Status (placeholder until Phase 7C)
+    - Certs expiring <30d, <7d, expired count
+    - Link to Certificate Overview dashboard
+  - Row: Active Alerts for This Site
+    - Table of firing alerts filtered by datacenter label
+  - Row: Recent Logs for This Site
+    - Combined Windows Event Log + Linux journal + IIS access log stream from Loki
+  - Complexity: Medium
+  - Dependencies: Phase 7F complete (server + IIS recording rules provide initial data)
+
+- [ ] 3. Create fleet-level recording rules for site aggregation -- `configs/prometheus/site_recording_rules.yml`
+  - Per-site server counts: `site:servers_reporting:count`
+  - Per-site avg CPU: `site:cpu_utilization:avg`
+  - Per-site avg memory: `site:memory_utilization:avg`
+  - Per-site worst disk free: `site:disk_free:min`
+  - Per-site services not running: `site:services_not_running:sum`
+  - Per-site IIS request rate: `site:iis_request_rate:sum` (when IIS metrics exist)
+  - Complexity: Simple
+  - Dependencies: None (uses existing instance-level recording rules)
+
+- [ ] 4. Add cross-dashboard link navigation to all existing dashboards
+  - Add a dashboard link bar to Windows, Linux, IIS, and Infrastructure Overview dashboards
+  - Links pass current template variable values (`$datacenter`, `$environment`) to target dashboards
+  - Consistent navigation: every dashboard can reach the Enterprise NOC and Site Overview
+  - Complexity: Simple
+  - Dependencies: Tasks 1, 2
+
+- [ ] 5. Update placeholder rows as Phase 7 sub-phases complete
+  - 7A ships: populate Network row with SNMP recording rules, add NOC column
+  - 7B ships: populate Hardware row with Redfish metrics, add NOC column
+  - 7C ships: populate Certificate row with blackbox metrics, add NOC column
+  - This is an ongoing integration task, not a one-time deliverable
+  - Complexity: Simple (per sub-phase)
+  - Dependencies: Respective Phase 7 sub-phases
+
+### Architecture Notes
+
+- **Link inheritance**: Grafana supports passing template variables via URL parameters. The Enterprise NOC links to Site Overview with `?var-datacenter=SITE-A`. Site Overview links to detailed dashboards with `?var-datacenter=$datacenter&var-environment=$environment`. This creates seamless drill-down without requiring users to re-select filters.
+- **Placeholder rows**: Rows for monitoring domains that are not yet deployed (SNMP, Hardware, Certs) display "Not yet configured" or are hidden via a conditional variable. They become active when the corresponding recording rules produce data.
+- **Dashboard UIDs**: `enterprise-noc`, `site-overview`. All dashboards reference these UIDs in their link definitions for stability across Grafana upgrades.
+- **No Lansweeper overlap**: Asset inventory panels are intentionally excluded. Lansweeper handles endpoint/asset discovery. This stack handles infrastructure health monitoring. The boundary is clear: if we actively poll/scrape it, it appears here. If Lansweeper discovers it passively, it stays in Lansweeper.
+
+### Risks
+
+- Dashboard complexity: the Enterprise NOC grid queries many recording rules simultaneously. Mitigation: all queries use pre-computed recording rules (not raw metrics), keeping dashboard load time fast.
+- Placeholder row maintenance: forgetting to update placeholders when a sub-phase ships. Mitigation: Task 5 explicitly tracks this as ongoing work tied to each sub-phase.
+- Template variable cascade: passing variables between dashboards requires consistent naming (`datacenter` everywhere, not `site` in some places). Mitigation: existing dashboards already use a consistent taxonomy.
+
+### Human Actions Required
+
+- [ ] Review Enterprise NOC layout with operations team
+- [ ] Confirm which sites should appear in the NOC grid (all sites, or only production?)
+- [ ] Provide feedback on Site Overview row ordering and priority
+
+---
+
 ## Human Actions Checklist
 
 > Consolidated list of all actions requiring human intervention.
@@ -547,6 +1139,50 @@
 - [ ] Choose a license for the repo
 - [ ] Review final repo for remaining org-specific references
 
+### SNMP Monitoring (Phase 7A)
+
+- [ ] Provide list of network device types and models in the fleet
+- [ ] Provide SNMP community strings or SNMPv3 credentials
+- [ ] Identify which devices should send traps (device-side configuration)
+- [ ] Verify network access from monitoring stack to device management interfaces
+
+### Hardware/HCI Monitoring (Phase 7B)
+
+- [ ] Create read-only BMC service accounts for monitoring on iLO and iDRAC
+- [ ] Provide BMC IP addresses or DNS names for monitored servers
+- [ ] Verify network access from monitoring stack to BMC management VLAN
+
+### Certificate Monitoring (Phase 7C)
+
+- [ ] Provide initial list of HTTPS/TLS endpoints to monitor (internal + public)
+- [ ] Provide internal CA root and intermediate certificates for trust chain
+- [ ] Confirm DigiCert CertCentral API access availability (if using direct API)
+- [ ] Review alert thresholds (30d warning, 7d critical defaults)
+
+### Lansweeper Integration (Phase 7D)
+
+- [ ] Create Lansweeper API Personal Access Token with read permissions
+- [ ] Confirm which Lansweeper sites/scopes to query
+- [ ] Provide Lansweeper API endpoint URL (cloud or on-prem)
+
+### Cloud Monitoring (Phase 7E)
+
+- [ ] Identify which cloud provider(s) are in use (when ready)
+- [ ] Create IAM role or Azure service principal with read-only metrics access
+
+### Agentless Collection (Phase 7G)
+
+- [ ] Identify devices where agent installation is not possible
+- [ ] Document reason for each (vendor restriction, embedded, access limitation)
+- [ ] Provide WinRM/SSH credentials or auth method for each target
+- [ ] Approve agentless scope before implementation begins
+
+### Dashboard Hub (Phase 7H)
+
+- [ ] Review Enterprise NOC layout with operations team
+- [ ] Confirm which sites should appear in the NOC grid (all sites, or only production?)
+- [ ] Provide feedback on Site Overview row ordering and priority
+
 ### Post-Completion
 
 - [ ] Integrate config validation into CI/CD pipeline
@@ -561,8 +1197,15 @@
 - All configs designed to work with both Prometheus (Phase 1) and Mimir (Phase 2) via remote_write
 - Teams notification via Alertmanager webhook -- no MCP or external tooling required
 - Python 3.10+ required for validation scripts
+- Phase 7 extends monitoring beyond agent-based OS collection to SNMP, hardware, certificates, asset intelligence, and cloud
+- Network fleet: Cisco switches, Palo Alto firewalls, Ubiquiti APs/switches
+- HCI fleet: HPE SimpliVity (iLO) + Dell (iDRAC), firmware kept current
+- Certificate monitoring covers both internal PKI and public DigiCert certificates
+- Lansweeper GraphQL API integration pending -- new enterprise rollout, API capabilities require research
+- Phase 7 execution order: 7F (IIS dashboard) -> 7H (dashboard hub) -> 7C (certs) -> 7A (SNMP) -> 7B (hardware) -> 7D (Lansweeper) -> 7E (cloud) -> 7G (agentless, blocked)
+- Phase 7H (dashboard hub) ships right after 7F with server + IIS data; grows incrementally as each sub-phase adds its monitoring domain
 
 ---
 
-*Document Version: 1.2*
-*Last Updated: 2026-02-19*
+*Document Version: 1.4*
+*Last Updated: 2026-03-06*

@@ -59,3 +59,63 @@ providers:
       path: /var/lib/grafana/dashboards/overview
       foldersFromFilesStructure: false
     folder: "Infrastructure"
+
+  # ---------------------------------------------------------------------------
+  # Network Infrastructure Dashboards (Phase 7A)
+  # SNMP-based network device monitoring: switches, firewalls, UPS, etc.
+  # ---------------------------------------------------------------------------
+  - name: "Network"
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards/network
+      foldersFromFilesStructure: false
+    folder: "Network Infrastructure"
+
+  # ---------------------------------------------------------------------------
+  # Hardware Health Dashboards (Phase 7B)
+  # Redfish/IPMI hardware monitoring: iLO, iDRAC, chassis health.
+  # ---------------------------------------------------------------------------
+  - name: "Hardware"
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards/hardware
+      foldersFromFilesStructure: false
+    folder: "Hardware Health"
+
+  # ---------------------------------------------------------------------------
+  # Certificate Monitoring Dashboards (Phase 7C)
+  # SSL/TLS certificate expiry tracking for internal PKI and public certs.
+  # ---------------------------------------------------------------------------
+  - name: "Certificates"
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards/certs
+      foldersFromFilesStructure: false
+    folder: "Certificate Monitoring"
+
+  # ---------------------------------------------------------------------------
+  # Asset Intelligence Dashboards (Phase 7D)
+  # Lansweeper API integration: asset inventory, warranties, software.
+  # ---------------------------------------------------------------------------
+  - name: "Assets"
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards/assets
+      foldersFromFilesStructure: false
+    folder: "Asset Intelligence"
