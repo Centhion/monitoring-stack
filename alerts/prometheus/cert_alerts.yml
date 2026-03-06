@@ -1,0 +1,159 @@
+# =============================================================================
+# SSL/TLS Certificate Alert Rules (Phase 7C)
+# =============================================================================
+# Proactive alerting for certificate expiry across all monitored endpoints.
+# These rules evaluate the probe_ssl_earliest_cert_expiry metric produced by
+# the blackbox exporter (embedded in Alloy via role_cert_monitor.alloy).
+#
+# Alert escalation timeline:
+#   90 days  -- informational (for planning renewal workflows)
+#   30 days  -- warning (renewal should be in progress)
+#   7 days   -- critical (immediate action required)
+#   0 days   -- critical (certificate has expired)
+#
+# The probe_ssl_earliest_cert_expiry metric reports the earliest expiry in the
+# presented certificate chain. This means an expiring intermediate CA cert will
+# trigger alerts even if the leaf cert is valid -- this is by design, as an
+# expired intermediate breaks the chain.
+#
+# Dependencies:
+#   - job="cert_monitor" targets from role_cert_monitor.alloy
+#   - probe_ssl_earliest_cert_expiry metric (emitted by blackbox exporter)
+#   - probe_success metric (emitted by blackbox exporter)
+# =============================================================================
+
+groups:
+  - name: tls_certificate_alerts
+    rules:
+      # -----------------------------------------------------------------------
+      # Certificate expiring within 90 days (informational)
+      # -----------------------------------------------------------------------
+      # Early warning for renewal planning. Low urgency -- gives teams time
+      # to schedule renewal through standard change management workflows.
+      # -----------------------------------------------------------------------
+      - alert: TLSCertExpiring90Days
+        expr: |
+          (probe_ssl_earliest_cert_expiry{job="cert_monitor"} - time()) < 90 * 86400
+          and
+          (probe_ssl_earliest_cert_expiry{job="cert_monitor"} - time()) >= 30 * 86400
+        for: 1h
+        labels:
+          severity: info
+          category: certificate
+        annotations:
+          summary: >-
+            TLS certificate for {{ $labels.service }} ({{ $labels.instance }})
+            expires in {{ $value | humanizeDuration }}
+          description: >-
+            Certificate on {{ $labels.service }} in {{ $labels.datacenter }}
+            ({{ $labels.cert_type }}) expires within 90 days.
+            Owner: {{ $labels.owner }}.
+            Begin renewal planning through standard change management.
+          runbook_url: "https://wiki.example.com/runbooks/cert-renewal"
+          dashboard_url: "/d/cert-overview/certificate-overview?var-datacenter={{ $labels.datacenter }}"
+
+      # -----------------------------------------------------------------------
+      # Certificate expiring within 30 days (warning)
+      # -----------------------------------------------------------------------
+      # Renewal should already be in progress. If not, escalate to the cert
+      # owner immediately.
+      # -----------------------------------------------------------------------
+      - alert: TLSCertExpiring30Days
+        expr: |
+          (probe_ssl_earliest_cert_expiry{job="cert_monitor"} - time()) < 30 * 86400
+          and
+          (probe_ssl_earliest_cert_expiry{job="cert_monitor"} - time()) >= 7 * 86400
+        for: 30m
+        labels:
+          severity: warning
+          category: certificate
+        annotations:
+          summary: >-
+            TLS certificate for {{ $labels.service }} ({{ $labels.instance }})
+            expires in {{ $value | humanizeDuration }}
+          description: >-
+            Certificate on {{ $labels.service }} in {{ $labels.datacenter }}
+            ({{ $labels.cert_type }}) expires within 30 days.
+            Owner: {{ $labels.owner }}.
+            Renewal should be in progress. Escalate if not already underway.
+          runbook_url: "https://wiki.example.com/runbooks/cert-renewal"
+          dashboard_url: "/d/cert-overview/certificate-overview?var-datacenter={{ $labels.datacenter }}"
+
+      # -----------------------------------------------------------------------
+      # Certificate expiring within 7 days (critical)
+      # -----------------------------------------------------------------------
+      # Immediate action required. Service outage is imminent if the cert
+      # is not renewed before expiry.
+      # -----------------------------------------------------------------------
+      - alert: TLSCertExpiring7Days
+        expr: |
+          (probe_ssl_earliest_cert_expiry{job="cert_monitor"} - time()) < 7 * 86400
+          and
+          (probe_ssl_earliest_cert_expiry{job="cert_monitor"} - time()) > 0
+        for: 10m
+        labels:
+          severity: critical
+          category: certificate
+        annotations:
+          summary: >-
+            URGENT: TLS certificate for {{ $labels.service }} ({{ $labels.instance }})
+            expires in {{ $value | humanizeDuration }}
+          description: >-
+            Certificate on {{ $labels.service }} in {{ $labels.datacenter }}
+            ({{ $labels.cert_type }}) expires within 7 days.
+            Owner: {{ $labels.owner }}.
+            Immediate renewal required to prevent service outage.
+          runbook_url: "https://wiki.example.com/runbooks/cert-renewal-emergency"
+          dashboard_url: "/d/cert-overview/certificate-overview?var-datacenter={{ $labels.datacenter }}"
+
+      # -----------------------------------------------------------------------
+      # Certificate has expired (critical)
+      # -----------------------------------------------------------------------
+      # The certificate is already expired. Services using this cert may be
+      # failing or presenting browser warnings. Emergency renewal needed.
+      # -----------------------------------------------------------------------
+      - alert: TLSCertExpired
+        expr: |
+          probe_ssl_earliest_cert_expiry{job="cert_monitor"} - time() <= 0
+        for: 5m
+        labels:
+          severity: critical
+          category: certificate
+        annotations:
+          summary: >-
+            EXPIRED: TLS certificate for {{ $labels.service }} ({{ $labels.instance }})
+            has expired
+          description: >-
+            Certificate on {{ $labels.service }} in {{ $labels.datacenter }}
+            ({{ $labels.cert_type }}) is EXPIRED.
+            Owner: {{ $labels.owner }}.
+            Services using this certificate may be experiencing outages.
+            Emergency renewal and deployment required.
+          runbook_url: "https://wiki.example.com/runbooks/cert-expired-emergency"
+          dashboard_url: "/d/cert-overview/certificate-overview?var-datacenter={{ $labels.datacenter }}"
+
+      # -----------------------------------------------------------------------
+      # Certificate probe failure (warning)
+      # -----------------------------------------------------------------------
+      # The blackbox probe cannot reach the endpoint or the TLS handshake
+      # failed. This could mean the endpoint is down, a firewall is blocking
+      # the probe, or the certificate/TLS config is broken.
+      # -----------------------------------------------------------------------
+      - alert: TLSCertProbeFailure
+        expr: |
+          probe_success{job="cert_monitor"} == 0
+        for: 15m
+        labels:
+          severity: warning
+          category: certificate
+        annotations:
+          summary: >-
+            Certificate probe failed for {{ $labels.service }} ({{ $labels.instance }})
+          description: >-
+            Blackbox probe to {{ $labels.service }} in {{ $labels.datacenter }}
+            has been failing for 15 minutes.
+            Possible causes: endpoint down, firewall blocking probe,
+            TLS configuration error, DNS resolution failure.
+            Owner: {{ $labels.owner }}.
+          runbook_url: "https://wiki.example.com/runbooks/cert-probe-failure"
+          dashboard_url: "/d/cert-overview/certificate-overview?var-datacenter={{ $labels.datacenter }}"

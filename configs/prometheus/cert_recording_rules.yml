@@ -1,0 +1,61 @@
+# =============================================================================
+# Certificate Monitoring Recording Rules (Phase 7C)
+# =============================================================================
+# Pre-compute certificate expiry aggregations for the Certificate Overview
+# dashboard and the Enterprise NOC / Site Overview hub dashboards.
+#
+# These rules consume probe_ssl_earliest_cert_expiry from the blackbox
+# exporter running in role_cert_monitor.alloy.
+#
+# Naming convention: <namespace>:<metric>:<aggregation>
+# =============================================================================
+
+groups:
+  - name: cert_recording_rules
+    interval: 60s
+    rules:
+      # Days until each certificate expires.
+      # Converts the Unix timestamp to a human-friendly "days remaining" gauge.
+      # Negative values indicate expired certificates.
+      - record: instance:cert_days_remaining:gauge
+        expr: |
+          (probe_ssl_earliest_cert_expiry{job="cert_monitor"} - time()) / 86400
+
+      # Total certificates monitored per site.
+      - record: site:certs_monitored:count
+        expr: |
+          count by (datacenter, environment) (
+            probe_ssl_earliest_cert_expiry{job="cert_monitor"}
+          )
+
+      # Certificates expiring within 30 days per site (for NOC dashboard).
+      - record: site:certs_expiring_30d:count
+        expr: |
+          count by (datacenter, environment) (
+            (probe_ssl_earliest_cert_expiry{job="cert_monitor"} - time()) < 30 * 86400
+            and
+            (probe_ssl_earliest_cert_expiry{job="cert_monitor"} - time()) > 0
+          )
+
+      # Certificates expiring within 7 days per site (critical).
+      - record: site:certs_expiring_7d:count
+        expr: |
+          count by (datacenter, environment) (
+            (probe_ssl_earliest_cert_expiry{job="cert_monitor"} - time()) < 7 * 86400
+            and
+            (probe_ssl_earliest_cert_expiry{job="cert_monitor"} - time()) > 0
+          )
+
+      # Expired certificates per site.
+      - record: site:certs_expired:count
+        expr: |
+          count by (datacenter, environment) (
+            (probe_ssl_earliest_cert_expiry{job="cert_monitor"} - time()) <= 0
+          )
+
+      # Certificate probe failures per site (endpoint unreachable).
+      - record: site:cert_probe_failures:count
+        expr: |
+          count by (datacenter, environment) (
+            probe_success{job="cert_monitor"} == 0
+          )

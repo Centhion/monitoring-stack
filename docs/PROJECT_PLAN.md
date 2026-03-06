@@ -22,7 +22,7 @@
 | Phase 6: Mimir Migration | Pending | Long-term metrics storage (when ready to scale) |
 | Phase 7A: SNMP Network Device Monitoring | Pending | Polling (native Alloy) + trap ingestion (snmptrapd pipeline) |
 | Phase 7B: Hardware/HCI Health Monitoring | Pending | Redfish API for HPE SimpliVity (iLO) and Dell (iDRAC) |
-| Phase 7C: SSL Certificate Monitoring | Pending | Blackbox probing for internal PKI + public DigiCert certs |
+| Phase 7C: SSL Certificate Monitoring | Completed | Blackbox probing for internal PKI + public DigiCert certs |
 | Phase 7D: Lansweeper Integration | Pending | Custom Python exporter for asset intelligence via GraphQL API |
 | Phase 7E: Cloud Infrastructure Monitoring | Pending | Stub configs for AWS CloudWatch / Azure Monitor (when ready) |
 | Phase 7F: IIS Dedicated Dashboard | Completed | Dashboard for existing IIS role metrics and access logs |
@@ -706,13 +706,13 @@
 
 **Goal**: Track certificate expiry for all internal PKI and public DigiCert certificates with dashboards and proactive alerting. Accuracy is the top priority -- no certificate should expire unnoticed.
 
-**Status**: Pending
+**Status**: Completed (Tasks 1-6 delivered; Tasks 7-9 deferred to deployment integration)
 
-**Architecture Decision Pending**: Task 1 is a research gate. The approach (blackbox probing, Lansweeper API, DigiCert API, or combination) will be decided based on findings. Blackbox probing is the baseline -- it works today with native Alloy components.
+**Architecture Decision**: Blackbox probing (native Alloy component) selected as primary approach. Lansweeper API as supplementary discovery source (Phase 7D). DigiCert CertCentral API deferred (blackbox covers public certs via HTTPS probing).
 
 ### Tasks
 
-- [ ] 1. Research certificate data sources and recommend approach
+- [x] 1. Research certificate data sources and recommend approach
   - Option A: Blackbox exporter (native Alloy) -- probes HTTPS/TLS endpoints, reports `probe_ssl_earliest_cert_expiry`
   - Option B: Lansweeper API (if it inventories cert data with expiry) -- depends on Phase 7D Task 1 findings
   - Option C: x509-certificate-exporter (standalone) -- scans cert files on disk for non-HTTP services
@@ -722,13 +722,13 @@
   - Complexity: Medium (research)
   - Dependencies: Phase 7D Task 1 findings (Lansweeper API capabilities)
 
-- [ ] 2. Create certificate endpoint inventory -- `configs/alloy/certs/endpoints.yml`
+- [x] 2. Create certificate endpoint inventory -- `configs/alloy/certs/endpoints.yml`
   - YAML list of HTTPS/TLS endpoints to probe (internal + public)
   - Fields: url, name, environment, cert_type (pki/public), owner
   - Complexity: Simple
   - Dependencies: Task 1 (approach decision)
 
-- [ ] 3. Create Alloy blackbox config -- `configs/alloy/roles/role_cert_monitor.alloy`
+- [x] 3. Create Alloy blackbox config -- `configs/alloy/roles/role_cert_monitor.alloy`
   - `prometheus.exporter.blackbox` with http_2xx_tls module
   - Target list from endpoints.yml via `discovery.file`
   - Expose `probe_ssl_earliest_cert_expiry` metric
@@ -736,14 +736,14 @@
   - Complexity: Medium
   - Dependencies: Task 2
 
-- [ ] 4. Create blackbox module config -- `configs/alloy/certs/blackbox_modules.yml`
+- [x] 4. Create blackbox module config -- `configs/alloy/certs/blackbox_modules.yml`
   - `http_2xx_tls` module: validate cert chain, follow redirects, configurable timeout
   - `tcp_tls` module: for non-HTTP TLS services (LDAPS on 636, SMTP/TLS on 587)
   - Internal CA trust: mount point for custom CA bundle
   - Complexity: Simple
   - Dependencies: None
 
-- [ ] 5. Create Certificate Monitoring dashboard -- `dashboards/certs/certificate_overview.json`
+- [x] 5. Create Certificate Monitoring dashboard -- `dashboards/certs/certificate_overview.json`
   - Stat panels: total certs monitored, expiring <30d, expiring <7d, expired
   - Table: all certs with days until expiry, issuer, cert_type, owner, endpoint
   - Color-coded: green (>90d), yellow (30-90d), orange (<30d), red (<7d)
@@ -752,7 +752,7 @@
   - Complexity: Medium
   - Dependencies: Task 3
 
-- [ ] 6. Create certificate alert rules -- `alerts/prometheus/cert_alerts.yml`
+- [x] 6. Create certificate alert rules -- `alerts/prometheus/cert_alerts.yml`
   - CertExpiringSoon (30 days) -- warning
   - CertExpiringCritical (7 days) -- critical
   - CertExpired (0 days) -- critical

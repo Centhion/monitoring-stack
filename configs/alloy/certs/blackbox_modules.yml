@@ -1,0 +1,91 @@
+# =============================================================================
+# Blackbox Exporter Module Definitions (Phase 7C)
+# =============================================================================
+# Defines probe modules for SSL/TLS certificate monitoring. Referenced by
+# the cert monitoring Alloy config (role_cert_monitor.alloy) via config_file.
+#
+# Two module types:
+#   https_cert_check     -- for standard HTTPS web endpoints (public + internal)
+#   tcp_tls_cert_check   -- for non-HTTP TLS services (LDAPS, SMTP/TLS, etc.)
+#
+# Both probers extract probe_ssl_earliest_cert_expiry automatically from the
+# TLS handshake. No additional configuration is needed for cert expiry metrics.
+#
+# Internal PKI: If probing services with private CA certs, either:
+#   a) Set ca_file in tls_config to your CA bundle path, OR
+#   b) Use insecure_skip_verify: true (still reports cert expiry, skips chain validation)
+#
+# Mounted at: /etc/alloy/blackbox_modules.yml (via ConfigMap or volume mount)
+# =============================================================================
+
+modules:
+  # ---------------------------------------------------------------------------
+  # HTTPS Certificate Check
+  # ---------------------------------------------------------------------------
+  # Probes web endpoints via HTTP GET with TLS validation. Suitable for
+  # public DigiCert-managed certs and internal HTTPS services.
+  #
+  # Returns probe_ssl_earliest_cert_expiry as a Unix timestamp of the earliest
+  # certificate expiry in the presented chain.
+  # ---------------------------------------------------------------------------
+  https_cert_check:
+    prober: http
+    timeout: 10s
+    http:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: true
+      valid_status_codes: []        # Accept any 2xx (default behavior)
+      method: GET
+      follow_redirects: true
+      fail_if_ssl: false
+      fail_if_not_ssl: true         # Require HTTPS -- fail if endpoint is plain HTTP
+      tls_config:
+        insecure_skip_verify: false  # Validate full certificate chain
+
+  # ---------------------------------------------------------------------------
+  # HTTPS Certificate Check (Internal PKI)
+  # ---------------------------------------------------------------------------
+  # Same as https_cert_check but with insecure_skip_verify for internal
+  # services using private CA certificates when the CA bundle is not
+  # available. Still collects probe_ssl_earliest_cert_expiry.
+  #
+  # Prefer https_cert_check with ca_file when the CA bundle is available.
+  # ---------------------------------------------------------------------------
+  https_cert_check_internal:
+    prober: http
+    timeout: 10s
+    http:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: true
+      valid_status_codes: []
+      method: GET
+      follow_redirects: true
+      fail_if_ssl: false
+      fail_if_not_ssl: true
+      tls_config:
+        insecure_skip_verify: true   # Skip chain validation for private CA
+        # When internal CA bundle is mounted, replace with:
+        # insecure_skip_verify: false
+        # ca_file: /etc/alloy/certs/internal-ca-bundle.pem
+
+  # ---------------------------------------------------------------------------
+  # TCP TLS Certificate Check
+  # ---------------------------------------------------------------------------
+  # Probes non-HTTP TLS services via raw TCP connection with TLS handshake.
+  # Use for: LDAPS (636), SMTP/TLS (465/587), SQL Server TLS (1433),
+  # Kafka TLS (9093), PostgreSQL TLS (5432), RDP (3389), etc.
+  #
+  # Returns probe_ssl_earliest_cert_expiry from the TLS handshake.
+  # ---------------------------------------------------------------------------
+  tcp_tls_cert_check:
+    prober: tcp
+    timeout: 10s
+    tcp:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: true
+      tls: true                      # Perform TLS handshake on connection
+      tls_config:
+        insecure_skip_verify: true   # Default to skip for internal PKI services
+        # When internal CA bundle is mounted, replace with:
+        # insecure_skip_verify: false
+        # ca_file: /etc/alloy/certs/internal-ca-bundle.pem

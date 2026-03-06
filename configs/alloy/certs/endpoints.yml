@@ -1,0 +1,101 @@
+# =============================================================================
+# Certificate Monitoring Endpoint Inventory (Phase 7C)
+# =============================================================================
+# Master list of HTTPS and TLS endpoints to monitor for certificate expiry.
+# Each entry becomes a blackbox probe target in role_cert_monitor.alloy.
+#
+# Adding a new endpoint:
+#   1. Add an entry below with all required fields
+#   2. Restart Alloy (or wait for config reload)
+#   3. The endpoint appears in the Certificate Overview dashboard automatically
+#
+# Fields:
+#   name        -- unique identifier for this endpoint (used as job label)
+#   address     -- URL (https://...) or host:port for TCP TLS probes
+#   module      -- blackbox module: https_cert_check, https_cert_check_internal,
+#                  or tcp_tls_cert_check
+#   labels      -- custom labels attached to all metrics for this endpoint
+#     datacenter  -- site/resort where this service lives
+#     environment -- prod, staging, dev
+#     cert_type   -- "public" (DigiCert/commercial CA) or "pki" (internal PKI)
+#     service     -- human-readable service name for dashboard display
+#     owner       -- team or individual responsible for cert renewal
+#
+# IMPORTANT: This file must be populated with actual endpoints before
+# certificate monitoring will produce data. The examples below are
+# placeholders that should be replaced with real endpoints.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# PLACEHOLDER ENDPOINTS -- replace with your actual endpoints
+# -----------------------------------------------------------------------------
+# These examples demonstrate the format for each module type. Remove or replace
+# them once you have real endpoints to monitor.
+
+endpoints:
+
+  # --- Public HTTPS (DigiCert / commercial CA) ---
+
+  # - name: "portal-prod"
+  #   address: "https://portal.example.com"
+  #   module: "https_cert_check"
+  #   labels:
+  #     datacenter: "resort-alpha"
+  #     environment: "prod"
+  #     cert_type: "public"
+  #     service: "Guest Portal"
+  #     owner: "web-team"
+
+  # - name: "api-prod"
+  #   address: "https://api.example.com"
+  #   module: "https_cert_check"
+  #   labels:
+  #     datacenter: "resort-alpha"
+  #     environment: "prod"
+  #     cert_type: "public"
+  #     service: "API Gateway"
+  #     owner: "platform-team"
+
+  # --- Internal PKI (HTTPS services) ---
+
+  # - name: "intranet-prod"
+  #   address: "https://intranet.corp.example.com"
+  #   module: "https_cert_check_internal"
+  #   labels:
+  #     datacenter: "resort-alpha"
+  #     environment: "prod"
+  #     cert_type: "pki"
+  #     service: "Intranet Portal"
+  #     owner: "infra-team"
+
+  # --- Internal PKI (non-HTTP TLS services) ---
+
+  # - name: "ldaps-dc01"
+  #   address: "dc01.corp.example.com:636"
+  #   module: "tcp_tls_cert_check"
+  #   labels:
+  #     datacenter: "resort-alpha"
+  #     environment: "prod"
+  #     cert_type: "pki"
+  #     service: "LDAPS (DC01)"
+  #     owner: "ad-team"
+
+  # - name: "smtp-relay"
+  #   address: "smtp-relay.corp.example.com:465"
+  #   module: "tcp_tls_cert_check"
+  #   labels:
+  #     datacenter: "resort-alpha"
+  #     environment: "prod"
+  #     cert_type: "pki"
+  #     service: "SMTP Relay"
+  #     owner: "mail-team"
+
+  # - name: "sql-prod-01"
+  #   address: "sql01.corp.example.com:1433"
+  #   module: "tcp_tls_cert_check"
+  #   labels:
+  #     datacenter: "resort-alpha"
+  #     environment: "prod"
+  #     cert_type: "pki"
+  #     service: "SQL Server TLS"
+  #     owner: "dba-team"

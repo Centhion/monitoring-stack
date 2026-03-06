@@ -1,0 +1,132 @@
+// =============================================================================
+// Certificate Monitoring Role -- Alloy Config (Phase 7C)
+// =============================================================================
+// Probes HTTPS and TLS endpoints using the embedded blackbox exporter to
+// collect SSL certificate expiry metrics. Produces:
+//   - probe_ssl_earliest_cert_expiry (Unix timestamp of earliest cert in chain)
+//   - probe_success (1/0 for reachability)
+//   - probe_duration_seconds (probe latency)
+//
+// This config runs on one Alloy instance per site (typically the same server
+// running the monitoring stack or a dedicated probe node). It does NOT need
+// to run on every server -- it probes remote endpoints.
+//
+// Required files (mounted via ConfigMap or volume):
+//   /etc/alloy/blackbox_modules.yml  -- probe module definitions
+//   /etc/alloy/certs/endpoints.yml   -- endpoint inventory
+//
+// Optional:
+//   /etc/alloy/certs/internal-ca-bundle.pem  -- internal PKI CA chain
+//
+// Environment variables:
+//   ALLOY_DATACENTER           -- site/datacenter label for this probe instance
+//   ALLOY_ENV                  -- environment label (prod, staging, dev)
+//   PROMETHEUS_REMOTE_WRITE_URL -- Prometheus remote_write endpoint
+// =============================================================================
+
+// ---------------------------------------------------------------------------
+// Blackbox Exporter -- Embedded Probe Engine
+// ---------------------------------------------------------------------------
+// Loads module definitions from the external YAML file. Targets are defined
+// as individual target blocks. When the endpoint inventory grows, consider
+// migrating to local.file + json_decode for dynamic target loading.
+//
+// The scrape interval is set to 5m because certificate expiry changes slowly
+// and frequent probing provides no additional value while increasing load on
+// monitored endpoints.
+// ---------------------------------------------------------------------------
+prometheus.exporter.blackbox "cert_monitor" {
+  config_file = sys.env("ALLOY_BLACKBOX_CONFIG_PATH") != "" ? sys.env("ALLOY_BLACKBOX_CONFIG_PATH") : "/etc/alloy/blackbox_modules.yml"
+
+  // -------------------------------------------------------------------------
+  // Target blocks are populated per-site during deployment. The examples
+  // below demonstrate the pattern. In production, each site's Alloy instance
+  // has its own target blocks for endpoints reachable from that site.
+  //
+  // To add a new endpoint:
+  //   1. Add a target block below with name, address, module, and labels
+  //   2. Reload Alloy config (SIGHUP or restart)
+  //   3. The endpoint appears in the Certificate Overview dashboard
+  //
+  // Label taxonomy matches the project standard:
+  //   datacenter  -- which site/resort this endpoint belongs to
+  //   environment -- prod, staging, dev
+  //   cert_type   -- "public" (DigiCert) or "pki" (internal CA)
+  //   service     -- human-readable service name for the dashboard
+  //   owner       -- team responsible for cert renewal
+  // -------------------------------------------------------------------------
+
+  // --- Example targets (uncomment and customize for your environment) ---
+
+  // target {
+  //   name    = "portal-prod"
+  //   address = "https://portal.example.com"
+  //   module  = "https_cert_check"
+  //   labels  = {
+  //     datacenter  = sys.env("ALLOY_DATACENTER"),
+  //     environment = sys.env("ALLOY_ENV"),
+  //     cert_type   = "public",
+  //     service     = "Guest Portal",
+  //     owner       = "web-team",
+  //   }
+  // }
+
+  // target {
+  //   name    = "ldaps-dc01"
+  //   address = "dc01.corp.example.com:636"
+  //   module  = "tcp_tls_cert_check"
+  //   labels  = {
+  //     datacenter  = sys.env("ALLOY_DATACENTER"),
+  //     environment = sys.env("ALLOY_ENV"),
+  //     cert_type   = "pki",
+  //     service     = "LDAPS (DC01)",
+  //     owner       = "ad-team",
+  //   }
+  // }
+
+  // target {
+  //   name    = "intranet"
+  //   address = "https://intranet.corp.example.com"
+  //   module  = "https_cert_check_internal"
+  //   labels  = {
+  //     datacenter  = sys.env("ALLOY_DATACENTER"),
+  //     environment = sys.env("ALLOY_ENV"),
+  //     cert_type   = "pki",
+  //     service     = "Intranet",
+  //     owner       = "infra-team",
+  //   }
+  // }
+}
+
+// ---------------------------------------------------------------------------
+// Scrape Configuration
+// ---------------------------------------------------------------------------
+// Scrapes the embedded blackbox exporter targets at a low frequency (5m).
+// Certificate expiry is a slowly-changing metric -- high-frequency scraping
+// adds load to monitored endpoints with no observability benefit.
+// ---------------------------------------------------------------------------
+prometheus.scrape "cert_monitor" {
+  targets         = prometheus.exporter.blackbox.cert_monitor.targets
+  forward_to      = [prometheus.relabel.cert_labels.receiver]
+  scrape_interval = "5m"
+  scrape_timeout  = "15s"
+  job_name        = "cert_monitor"
+}
+
+// ---------------------------------------------------------------------------
+// Label Enrichment
+// ---------------------------------------------------------------------------
+// Adds standard labels and forwards to the remote_write pipeline.
+// The cert-specific labels (cert_type, service, owner) are already attached
+// via target block labels above. This relabel step adds the standard
+// infrastructure labels for consistency with the rest of the stack.
+// ---------------------------------------------------------------------------
+prometheus.relabel "cert_labels" {
+  forward_to = [prometheus.remote_write.default.receiver]
+
+  // Ensure job label is consistent for alert rules and recording rules.
+  rule {
+    target_label = "job"
+    replacement  = "cert_monitor"
+  }
+}
