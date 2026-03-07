@@ -20,8 +20,8 @@
 | Phase 5.7: Fleet Tagging and Deployment | In Progress | Inventory system, Ansible playbooks, tag validation for 500-2000 servers across 5-15+ sites |
 | Phase 5.8: Generalization and K8s Readiness | In Progress | Strip org-specific content, Helm chart, fork-and-deploy template |
 | Phase 6: Mimir Migration | Pending | Long-term metrics storage (when ready to scale) |
-| Phase 7A: SNMP Network Device Monitoring | Pending | Polling (native Alloy) + trap ingestion (snmptrapd pipeline) |
-| Phase 7B: Hardware/HCI Health Monitoring | Pending | Redfish API for HPE SimpliVity (iLO) and Dell (iDRAC) |
+| Phase 7A: SNMP Network Device Monitoring | Completed | Gateway config, recording rules, alerts, dashboard. Traps/Helm/docs deferred. |
+| Phase 7B: Hardware/HCI Health Monitoring | Completed | Gateway config, recording rules, alerts, dashboard. Helm/docs deferred. |
 | Phase 7C: SSL Certificate Monitoring | Completed | Blackbox probing for internal PKI + public DigiCert certs |
 | Phase 7D: Lansweeper Integration | Pending | Custom Python exporter for asset intelligence via GraphQL API |
 | Phase 7E: Cloud Infrastructure Monitoring | Pending | Stub configs for AWS CloudWatch / Azure Monitor (when ready) |
@@ -521,87 +521,64 @@
 
 **Goal**: Poll any SNMP-capable device (switches, routers, firewalls, UPS, NAS, PDUs) via native Alloy SNMP exporter and ingest SNMP traps as logs via snmptrapd-to-Loki pipeline.
 
-**Status**: Pending
+**Status**: Completed (core deliverables; trap receiver, Helm, docs deferred)
 
 **Fleet Context**: Cisco switches, Palo Alto firewalls, Ubiquiti network hardware. No Aruba/HPE or Fortinet network gear. Template designed for extensibility -- adding new vendor MIBs is documented.
 
-**Integration Pattern**: Each sub-phase follows the full SDLC: Alloy/exporter config -> Docker Compose PoC -> dashboard -> alerts -> Helm chart -> validators -> documentation.
+**Integration Pattern**: SNMP monitoring runs on the Tier 2 Alloy Site Gateway container (one per site) alongside certificate probing and Redfish hardware polling. See Architecture Decisions for the two-tier deployment model.
 
 ### Tasks
 
-- [ ] 1. Create SNMP module configs -- `configs/alloy/snmp/snmp_modules.yml`
-  - Standard modules: `if_mib` (interfaces), `entity_mib` (chassis), `host_resources` (generic)
-  - Vendor modules: `cisco` (switches), `paloalto` (firewalls), `ubiquiti` (APs/switches)
-  - Infrastructure modules: `ups_mib` (UPS/PDU, RFC 1628)
-  - Each module is opt-in per device target
-  - Generated via snmp_exporter generator tool from MIB files
-  - Complexity: Medium
-  - Dependencies: None
+- [x] 1. Create SNMP auth profiles -- `configs/alloy/gateway/snmp_auths.yml`
+  - SNMPv2c community string profile and SNMPv3 authPriv/authNoPriv templates
+  - Credentials via environment variables (never hardcoded)
+  - Merges with built-in default modules (system, if_mib) via `config_merge_strategy = "merge"`
 
-- [ ] 2. Create Alloy SNMP gateway config -- `configs/alloy/roles/role_snmp_gateway.alloy`
-  - Uses `prometheus.exporter.snmp` with module configs from Task 1
-  - Target list driven by discovery.file reading targets.yml
-  - Walk params for SNMPv2c (community string) and SNMPv3 (auth/priv)
-  - Standard label injection: site, environment, device_type, device_name
-  - Complexity: Medium
-  - Dependencies: Task 1
+- [x] 2. Create unified site gateway SNMP config -- `configs/alloy/gateway/site_gateway.alloy`
+  - Uses `prometheus.exporter.snmp "network"` with config_merge_strategy="merge"
+  - Target blocks per device (uncomment per-site during deployment)
+  - Modules: system, if_mib (all devices), paloalto, ubiquiti_unifi, apcups (vendor-specific)
+  - Standard label injection: datacenter, environment, device_type, vendor, device_name
+  - 60s scrape interval with 20s timeout
 
-- [ ] 3. Create SNMP trap receiver pipeline
-  - Add snmptrapd container to Docker Compose (net-snmp image, UDP/162)
-  - Configure trap-to-syslog forwarding in snmptrapd.conf
-  - Add `loki.source.syslog` component to Alloy for trap ingestion
-  - Trap log labels: source_ip, trap_oid, severity
-  - Rate limiting in snmptrapd config to prevent Loki flood from noisy devices
-  - Complexity: Medium
-  - Dependencies: None (parallel with Tasks 1-2)
+- [x] 3. Create SNMP device inventory template -- `configs/alloy/gateway/snmp_targets.yml`
+  - Commented examples for each device type (Cisco switch, Palo Alto firewall, Ubiquiti AP, APC UPS)
+  - Documents required fields: name, address, module, auth, labels
 
-- [ ] 4. Create SNMP device discovery file -- `configs/alloy/snmp/targets.yml`
-  - YAML-based target inventory: address, module, community/auth, site, device_type labels
-  - Template with examples for each device type (Cisco switch, Palo Alto firewall, Ubiquiti AP)
-  - Used by `discovery.file` in Alloy SNMP gateway config
-  - Complexity: Simple
-  - Dependencies: Task 2
+- [x] 4. Create SNMP recording rules -- `configs/prometheus/snmp_recording_rules.yml`
+  - Interface-level: traffic rates (in/out/total), error rates, discard rates, utilization ratios
+  - Site-level: device counts, interfaces down, high utilization count, error interface count
 
-- [ ] 5. Create Network Infrastructure dashboard -- `dashboards/network/network_overview.json`
-  - Interface utilization, error rates, bandwidth per device
-  - Device health summary (up/down, CPU/memory where available via SNMP)
-  - Top-N worst interfaces panel
-  - Template vars: site, device_type, device_name
-  - Complexity: Medium
-  - Dependencies: Task 2
+- [x] 5. Create Network Infrastructure dashboard -- `dashboards/network/network_overview.json`
+  - 16-panel dashboard with device inventory table, interface status table
+  - Traffic overview (inbound/outbound by device, stacked area)
+  - Top 10 interface utilization with threshold lines (80% warning, 95% critical)
+  - Error and discard rate timeseries
+  - Template vars: environment, datacenter (site), device_type
 
-- [ ] 6. Create SNMP Trap Log Explorer dashboard -- `dashboards/network/trap_explorer.json`
-  - LogQL queries against trap logs in Loki
-  - Filter by source device, trap OID, severity
-  - Volume over time, recent traps table
-  - Complexity: Simple
-  - Dependencies: Task 3
+- [x] 6. Create SNMP alert rules -- `alerts/prometheus/snmp_alerts.yml`
+  - SNMPDeviceUnreachable (critical, 5m), SNMPDeviceReboot (warning)
+  - SNMPInterfaceDown (warning, admin up / oper down)
+  - SNMPInterfaceHighUtilization (warning, >85%, 15m), SNMPInterfaceSaturated (critical, >95%, 5m)
+  - SNMPInterfaceErrors (warning, sustained >1 error/sec, 10m)
 
-- [ ] 7. Create SNMP alert rules -- `alerts/prometheus/snmp_alerts.yml`
-  - Interface down, high utilization (>80%), error rate spike
-  - Device unreachable (SNMP timeout)
-  - UPS on battery, UPS low battery (if UPS monitored)
-  - Complexity: Simple
-  - Dependencies: Task 2
+- [x] 7. Update Enterprise NOC dashboard -- Network Infrastructure row
+  - Replaced placeholder with site-aggregated table: devices, devices down, interfaces down, high util, errors
+  - Clickable site names linking to Network Infrastructure dashboard
 
-- [ ] 8. Add snmptrapd to Helm chart
-  - Optional sidecar or standalone Deployment (enabled: false by default)
-  - ConfigMap for snmptrapd.conf
-  - Service for UDP/162 ingress
-  - Complexity: Simple
-  - Dependencies: Task 3
+- [x] 8. Update Site Overview dashboard -- Network Infrastructure row
+  - Replaced placeholder with device table (status, uptime, IP, type, vendor)
+  - Added traffic-by-device timeseries panel
 
-- [ ] 9. Update validators for SNMP configs
-  - Validate snmp_modules.yml structure
-  - Validate targets.yml schema (required fields, valid modules)
-  - Complexity: Simple
-  - Dependencies: Tasks 1, 4
+- [ ] 9. Create SNMP trap receiver pipeline (deferred)
+  - snmptrapd sidecar, loki.source.syslog ingestion, trap_explorer dashboard
+  - Deferred until trap ingestion use case is validated by the team
 
-- [ ] 10. Documentation -- `docs/SNMP_MONITORING.md`
-  - Setup guide: adding devices, choosing modules, SNMPv3 auth
-  - Trap receiver architecture and configuration
-  - Extending with custom vendor MIBs (generator workflow)
-  - Complexity: Simple
+- [ ] 10. Add SNMP to Helm chart (deferred)
+  - Will be addressed during Phase 5.8 Helm chart work
+
+- [ ] 11. Documentation -- `docs/SNMP_MONITORING.md` (deferred)
+  - Setup guide, adding devices, SNMPv3 auth, custom vendor MIBs
 
 ### Risks
 
@@ -622,71 +599,63 @@
 
 **Goal**: Monitor HPE SimpliVity (iLO) and Dell (iDRAC) hardware health via Redfish API -- fans, PSUs, temperatures, physical disks, memory DIMMs, overall chassis status.
 
-**Status**: Pending
+**Status**: Completed (core deliverables; exporter selection, Helm, docs deferred)
 
 **Fleet Context**: Mixed HPE SimpliVity and Dell hardware. Firmware kept current -- no Redfish compatibility concerns.
 
+**Integration Pattern**: Redfish monitoring runs on the Tier 2 Alloy Site Gateway via an external exporter sidecar (Alloy does not have a native Redfish component). The exporter runs alongside the gateway container and accepts BMC targets via the multi-target URL parameter pattern.
+
 ### Tasks
 
-- [ ] 1. Evaluate and select Redfish exporter
-  - Compare `idrac_exporter` (Redfish, supports Dell + HPE) vs `ipmi_exporter` (IPMI protocol, requires freeipmi)
-  - Test against both iLO and iDRAC endpoints if possible
-  - Recommend single exporter or one per vendor
-  - Deliver written recommendation with trade-offs
-  - Complexity: Medium (research task)
-  - Dependencies: None
+- [x] 1. Create Redfish scrape config in site gateway -- `configs/alloy/gateway/site_gateway.alloy`
+  - `prometheus.scrape "redfish"` section (commented, uncomment per-site)
+  - Multi-target pattern: `__param_target` passes BMC IP to exporter on localhost:9220
+  - 120s scrape interval with 30s timeout (Redfish queries are heavier than SNMP)
+  - Labels: device_name, vendor, device_type=server_bmc
 
-- [ ] 2. Create Redfish exporter config -- `configs/exporters/redfish/`
-  - Exporter configuration for multi-target scraping pattern
-  - Credential management via environment variables (never in config files)
-  - Target list with BMC addresses, vendor label, site label
-  - Complexity: Simple
-  - Dependencies: Task 1
+- [x] 2. Create Redfish target inventory template -- `configs/alloy/gateway/redfish_targets.yml`
+  - Reference template with examples for HPE iLO and Dell iDRAC servers
+  - Documents required fields and label taxonomy (bmc_type, vendor, device_name)
+  - Labels map to target block structure in site_gateway.alloy
 
-- [ ] 3. Create Alloy scrape config -- `configs/alloy/roles/role_hardware_monitor.alloy`
-  - `prometheus.scrape` targeting the Redfish exporter
-  - Relabel rules to inject standard labels (site, environment, hostname)
-  - Multi-target pattern: one exporter instance scrapes many BMCs
-  - 60-120s scrape interval (hardware state changes slowly, Redfish queries are heavier than SNMP)
-  - Complexity: Simple
-  - Dependencies: Task 2
+- [x] 3. Create hardware recording rules -- `configs/prometheus/hardware_recording_rules.yml`
+  - Server-level: max temperature, total power consumption per server
+  - Site-level: monitored/unreachable/healthy/warning/critical counts, total power, max temperature
 
-- [ ] 4. Add Redfish exporter to Docker Compose
-  - Container with config mount
-  - Mock/simulator for local testing if available
-  - Complexity: Simple
-  - Dependencies: Task 2
+- [x] 4. Create Hardware Health dashboard -- `dashboards/hardware/hardware_overview.json`
+  - 14-panel dashboard with health summary stats (monitored, healthy, warning, critical, unreachable, power)
+  - Server inventory table with health/power/temp columns and color-coded cells
+  - Temperature monitoring (peak per server, individual sensors filtered by server)
+  - Power consumption (per server stacked, per site aggregate)
+  - Component health (drives, memory) in collapsed section
+  - Template vars: environment, datacenter, vendor, server
 
-- [ ] 5. Create Hardware Health dashboard -- `dashboards/hardware/hardware_overview.json`
-  - Chassis health summary (OK/Warning/Critical per server)
-  - Temperature gauges per component
-  - Fan speed and PSU status
-  - Physical disk health and predictive failure
-  - Memory DIMM status
-  - Template vars: site, vendor, server_name
-  - Complexity: Medium
-  - Dependencies: Task 3
+- [x] 5. Create hardware alert rules -- `alerts/prometheus/hardware_alerts.yml`
+  - RedfishBMCUnreachable (warning, 10m)
+  - RedfishHealthWarning (warning, 5m), RedfishHealthCritical (critical, 2m)
+  - RedfishTemperatureHigh (warning, >75C), RedfishTemperatureCritical (critical, >85C)
+  - RedfishServerPoweredOff (critical, BMC reachable but chassis off)
+  - RedfishDriveUnhealthy (warning), RedfishMemoryUnhealthy (warning)
 
-- [ ] 6. Create hardware alert rules -- `alerts/prometheus/hardware_alerts.yml`
-  - Component degraded/failed (PSU, fan, disk, DIMM)
-  - Temperature threshold exceeded
-  - Chassis intrusion detected
-  - BMC unreachable
-  - Complexity: Simple
-  - Dependencies: Task 3
+- [x] 6. Update Enterprise NOC dashboard -- Hardware Health row
+  - Replaced placeholder with site-aggregated table: monitored, healthy, warning, critical, unreachable, max temp, power
+  - Clickable site names linking to Hardware Health dashboard
 
-- [ ] 7. Add Redfish exporter to Helm chart
-  - Optional Deployment (enabled: false by default)
-  - Secret for BMC credentials
-  - ConfigMap for target list
-  - Complexity: Simple
-  - Dependencies: Task 4
+- [x] 7. Update Site Overview dashboard -- Hardware Health row
+  - Replaced placeholder with server health table (health, power state, temperature, power draw)
+  - Clickable server names linking to Hardware Health dashboard
 
-- [ ] 8. Documentation -- `docs/HARDWARE_MONITORING.md`
-  - Redfish API prerequisites (iLO/iDRAC user accounts, network access)
-  - Adding new servers to hardware monitoring
-  - Credential security best practices
-  - Complexity: Simple
+- [ ] 8. Evaluate and select Redfish exporter (deferred)
+  - Compare `idrac_exporter` vs `ipmi_exporter` vs community alternatives
+  - Test against both iLO and iDRAC endpoints
+  - Will be done during initial site gateway deployment
+
+- [ ] 9. Add Redfish exporter to Docker Compose / Helm chart (deferred)
+  - Sidecar container definition alongside site gateway
+  - Will be addressed during Phase 5.8 Helm chart work
+
+- [ ] 10. Documentation -- `docs/HARDWARE_MONITORING.md` (deferred)
+  - Redfish API prerequisites, adding servers, credential security
 
 ### Risks
 
@@ -1018,8 +987,8 @@
   - Domain columns (grow as phases ship):
     - Servers: count, avg CPU, avg memory, services down
     - IIS: request rate, 5xx error rate (when Phase 7F metrics exist)
-    - Network: devices up/down, interface errors (when Phase 7A ships)
-    - Hardware: chassis health OK/warning/critical count (when Phase 7B ships)
+    - Network: devices up/down, interfaces down, high utilization, errors (Phase 7A -- live)
+    - Hardware: chassis health OK/warning/critical, temperature, power (Phase 7B -- live)
     - Certificates: expiring <30d count (when Phase 7C ships)
   - Active alert count per site with severity breakdown
   - Top-N worst sites ranking (by combined health score)
@@ -1039,11 +1008,11 @@
   - Row: IIS Web Services
     - Total request rate, 5xx error rate, active connections
     - Link to IIS Overview dashboard (inherits site filter)
-  - Row: Network Infrastructure (placeholder until Phase 7A)
-    - Devices up/down, worst interface utilization, recent traps
-    - Link to Network Overview dashboard
-  - Row: Hardware Health (placeholder until Phase 7B)
-    - Chassis health summary, temperature warnings, disk predictive failures
+  - Row: Network Infrastructure (Phase 7A -- live)
+    - Device inventory table (status, uptime, type, vendor), traffic timeseries
+    - Link to Network Infrastructure dashboard
+  - Row: Hardware Health (Phase 7B -- live)
+    - Server health table (health, power state, temperature, power draw)
     - Link to Hardware Health dashboard
   - Row: Certificate Status (placeholder until Phase 7C)
     - Certs expiring <30d, <7d, expired count
@@ -1072,25 +1041,23 @@
   - Complexity: Simple
   - Dependencies: Tasks 1, 2
 
-- [ ] 5. Update placeholder rows as Phase 7 sub-phases complete
-  - 7A ships: populate Network row with SNMP recording rules, add NOC column
-  - 7B ships: populate Hardware row with Redfish metrics, add NOC column
-  - 7C ships: populate Certificate row with blackbox metrics, add NOC column
-  - This is an ongoing integration task, not a one-time deliverable
-  - Complexity: Simple (per sub-phase)
-  - Dependencies: Respective Phase 7 sub-phases
+- [x] 5. Update placeholder rows as Phase 7 sub-phases complete
+  - 7A: Network rows populated with SNMP recording rules, NOC site table with drill-down
+  - 7B: Hardware rows populated with Redfish metrics, NOC site table with drill-down
+  - 7C: Certificate rows populated with blackbox metrics (completed previously)
+  - Remaining: only Phase 7D+ sub-phases (if dashboard integration needed)
 
 ### Architecture Notes
 
 - **Link inheritance**: Grafana supports passing template variables via URL parameters. The Enterprise NOC links to Site Overview with `?var-datacenter=SITE-A`. Site Overview links to detailed dashboards with `?var-datacenter=$datacenter&var-environment=$environment`. This creates seamless drill-down without requiring users to re-select filters.
-- **Placeholder rows**: Rows for monitoring domains that are not yet deployed (SNMP, Hardware, Certs) display "Not yet configured" or are hidden via a conditional variable. They become active when the corresponding recording rules produce data.
+- **Placeholder rows**: Network (7A), Hardware (7B), and Certificate (7C) rows are now populated with real queries and drill-down links. Future Phase 7 sub-phases (7D+) follow the same pattern if dashboard integration is needed.
 - **Dashboard UIDs**: `enterprise-noc`, `site-overview`. All dashboards reference these UIDs in their link definitions for stability across Grafana upgrades.
 - **No Lansweeper overlap**: Asset inventory panels are intentionally excluded. Lansweeper handles endpoint/asset discovery. This stack handles infrastructure health monitoring. The boundary is clear: if we actively poll/scrape it, it appears here. If Lansweeper discovers it passively, it stays in Lansweeper.
 
 ### Risks
 
 - Dashboard complexity: the Enterprise NOC grid queries many recording rules simultaneously. Mitigation: all queries use pre-computed recording rules (not raw metrics), keeping dashboard load time fast.
-- Placeholder row maintenance: forgetting to update placeholders when a sub-phase ships. Mitigation: Task 5 explicitly tracks this as ongoing work tied to each sub-phase.
+- Placeholder row maintenance: Network, Hardware, and Certificate placeholder rows are now populated. Only future Phase 7 sub-phases (7D+) may need dashboard integration.
 - Template variable cascade: passing variables between dashboards requires consistent naming (`datacenter` everywhere, not `site` in some places). Mitigation: existing dashboards already use a consistent taxonomy.
 
 ### Human Actions Required
@@ -1191,6 +1158,37 @@
 
 ---
 
+## Architecture Decisions
+
+### Two-Tier Alloy Deployment Model (Decided 2026-03-06)
+
+All monitoring at each site uses two distinct Alloy deployment patterns:
+
+**Tier 1: Alloy Agent (per-server, push-based)**
+- Installed on every Windows and Linux server via SCCM or Ansible
+- Monitors the local server (CPU, memory, disk, services, event logs)
+- Pushes metrics/logs to Prometheus/Loki via remote_write
+- Config: `configs/alloy/common/` + `configs/alloy/windows/` or `configs/alloy/linux/`
+- Identity: `ALLOY_DATACENTER` environment variable determines site membership
+
+**Tier 2: Alloy Site Gateway (one container per site, pull-based)**
+- Single container/pod at each site that polls all non-server infrastructure
+- Handles three pull-based monitoring patterns from one deployment:
+  - SNMP polling (switches, firewalls, APs, UPS, NAS) via `prometheus.exporter.snmp`
+  - Certificate probing (HTTPS + TCP/TLS endpoints) via `prometheus.exporter.blackbox`
+  - Hardware health (iLO, iDRAC BMC interfaces) via Redfish API exporter
+- Requires management VLAN network access to reach device interfaces
+- Can run on any server at the site with Docker -- Lansweeper server is a candidate
+- Config: `configs/alloy/gateway/` (unified gateway config)
+- Transitions to a K8s pod with zero config changes when NKP arrives
+
+**Per-site deployment checklist:**
+1. Install Alloy agent on servers (Tier 1) with `ALLOY_DATACENTER=resort-name`
+2. Deploy site gateway container (Tier 2) with target lists for that site's devices
+3. Populate `targets.yml` files with site-specific device IPs, BMC addresses, cert endpoints
+
+---
+
 ## Notes
 
 - Alloy replaces both node_exporter/windows_exporter and Promtail in a single binary
@@ -1202,10 +1200,10 @@
 - HCI fleet: HPE SimpliVity (iLO) + Dell (iDRAC), firmware kept current
 - Certificate monitoring covers both internal PKI and public DigiCert certificates
 - Lansweeper GraphQL API integration pending -- new enterprise rollout, API capabilities require research
-- Phase 7 execution order: 7F (IIS dashboard) -> 7H (dashboard hub) -> 7C (certs) -> 7A (SNMP) -> 7B (hardware) -> 7D (Lansweeper) -> 7E (cloud) -> 7G (agentless, blocked)
+- Phase 7 execution order: 7F (done) -> 7H (done) -> 7C (done) -> 7A (done) -> 7B (done) -> 7D (Lansweeper) -> 7E (cloud) -> 7G (agentless, blocked)
 - Phase 7H (dashboard hub) ships right after 7F with server + IIS data; grows incrementally as each sub-phase adds its monitoring domain
 
 ---
 
-*Document Version: 1.4*
+*Document Version: 1.6*
 *Last Updated: 2026-03-06*

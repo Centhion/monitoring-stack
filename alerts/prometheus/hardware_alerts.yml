@@ -1,0 +1,241 @@
+# =============================================================================
+# Hardware Health Alert Rules (Phase 7B)
+# =============================================================================
+# Proactive alerting for physical server health via Redfish API monitoring.
+# These rules evaluate metrics from the Redfish exporter sidecar that polls
+# iLO/iDRAC BMC management interfaces.
+#
+# Alert categories:
+#   BMC connectivity    -- exporter cannot reach BMC endpoint
+#   System health       -- overall health status changes (warning/critical)
+#   Thermal             -- temperature threshold violations
+#   Power               -- power supply and consumption anomalies
+#   Component health    -- drive, memory, processor failures
+#
+# Dependencies:
+#   - job="redfish" targets from site_gateway.alloy
+#   - Recording rules from hardware_recording_rules.yml
+#   - Redfish exporter metrics (redfish_*)
+# =============================================================================
+
+groups:
+  - name: hardware_bmc_alerts
+    rules:
+      # -----------------------------------------------------------------------
+      # BMC unreachable (warning)
+      # -----------------------------------------------------------------------
+      # The Redfish exporter cannot reach the BMC management interface.
+      # Could indicate BMC network issue, credential change, or BMC crash.
+      # Not immediately critical because the server itself may be running
+      # fine -- we just lost out-of-band visibility.
+      # -----------------------------------------------------------------------
+      - alert: RedfishBMCUnreachable
+        expr: |
+          redfish_up{job="redfish"} == 0
+        for: 10m
+        labels:
+          severity: warning
+          category: hardware
+        annotations:
+          summary: >-
+            BMC unreachable for {{ $labels.device_name }} ({{ $labels.instance }})
+          description: >-
+            Cannot reach the BMC management interface for
+            {{ $labels.device_name }} ({{ $labels.vendor }})
+            in {{ $labels.datacenter }} via Redfish API.
+            Verify BMC network connectivity and credentials.
+            The server itself may still be operational.
+          runbook_url: "https://wiki.example.com/runbooks/bmc-unreachable"
+          dashboard_url: "/d/hardware-overview/hardware-health?var-datacenter={{ $labels.datacenter }}"
+
+  - name: hardware_health_alerts
+    rules:
+      # -----------------------------------------------------------------------
+      # System health warning
+      # -----------------------------------------------------------------------
+      # The BMC reports a non-critical health issue. Typically indicates a
+      # degraded but still functional component (predictive drive failure,
+      # single PSU loss in redundant config, non-critical sensor warning).
+      # -----------------------------------------------------------------------
+      - alert: RedfishHealthWarning
+        expr: |
+          redfish_health{job="redfish"} == 1
+        for: 5m
+        labels:
+          severity: warning
+          category: hardware
+        annotations:
+          summary: >-
+            Hardware warning on {{ $labels.device_name }} ({{ $labels.instance }})
+          description: >-
+            {{ $labels.device_name }} ({{ $labels.vendor }})
+            in {{ $labels.datacenter }} reports a degraded health status.
+            Check BMC console for specific component warnings.
+            Server is likely still operational but needs attention.
+          runbook_url: "https://wiki.example.com/runbooks/hardware-warning"
+          dashboard_url: "/d/hardware-overview/hardware-health?var-datacenter={{ $labels.datacenter }}"
+
+      # -----------------------------------------------------------------------
+      # System health critical
+      # -----------------------------------------------------------------------
+      # The BMC reports a critical hardware fault. Server may be at risk of
+      # failure or already experiencing degraded performance. Requires
+      # immediate investigation and likely a maintenance window.
+      # -----------------------------------------------------------------------
+      - alert: RedfishHealthCritical
+        expr: |
+          redfish_health{job="redfish"} == 2
+        for: 2m
+        labels:
+          severity: critical
+          category: hardware
+        annotations:
+          summary: >-
+            CRITICAL hardware fault on {{ $labels.device_name }}
+            ({{ $labels.instance }})
+          description: >-
+            {{ $labels.device_name }} ({{ $labels.vendor }})
+            in {{ $labels.datacenter }} reports CRITICAL health status.
+            Immediate investigation required. Check BMC console for
+            failed components. Plan for potential server evacuation.
+          runbook_url: "https://wiki.example.com/runbooks/hardware-critical"
+          dashboard_url: "/d/hardware-overview/hardware-health?var-datacenter={{ $labels.datacenter }}"
+
+  - name: hardware_thermal_alerts
+    rules:
+      # -----------------------------------------------------------------------
+      # High temperature warning (>75C)
+      # -----------------------------------------------------------------------
+      # Component temperature above normal operating range but below critical.
+      # May indicate airflow obstruction, fan degradation, or high ambient
+      # temperature in the data center.
+      # -----------------------------------------------------------------------
+      - alert: RedfishTemperatureHigh
+        expr: |
+          server:temperature_max:celsius{job="redfish"} > 75
+        for: 10m
+        labels:
+          severity: warning
+          category: hardware
+        annotations:
+          summary: >-
+            High temperature on {{ $labels.device_name }}
+            ({{ $labels.instance }}): {{ $value }}C
+          description: >-
+            {{ $labels.device_name }} ({{ $labels.vendor }})
+            in {{ $labels.datacenter }} has a component temperature of
+            {{ $value }}C (threshold: 75C).
+            Check data center cooling, server fan status, and airflow.
+          runbook_url: "https://wiki.example.com/runbooks/server-temperature"
+          dashboard_url: "/d/hardware-overview/hardware-health?var-datacenter={{ $labels.datacenter }}"
+
+      # -----------------------------------------------------------------------
+      # Critical temperature (>85C)
+      # -----------------------------------------------------------------------
+      # Component at risk of thermal shutdown. Most server CPUs will throttle
+      # or shut down at ~95-100C. Action needed before automatic shutdown.
+      # -----------------------------------------------------------------------
+      - alert: RedfishTemperatureCritical
+        expr: |
+          server:temperature_max:celsius{job="redfish"} > 85
+        for: 5m
+        labels:
+          severity: critical
+          category: hardware
+        annotations:
+          summary: >-
+            CRITICAL temperature on {{ $labels.device_name }}
+            ({{ $labels.instance }}): {{ $value }}C
+          description: >-
+            {{ $labels.device_name }} ({{ $labels.vendor }})
+            in {{ $labels.datacenter }} has reached {{ $value }}C
+            (critical threshold: 85C).
+            Server may throttle or shut down automatically.
+            Immediate cooling investigation required.
+          runbook_url: "https://wiki.example.com/runbooks/server-temperature-critical"
+          dashboard_url: "/d/hardware-overview/hardware-health?var-datacenter={{ $labels.datacenter }}"
+
+  - name: hardware_power_alerts
+    rules:
+      # -----------------------------------------------------------------------
+      # Server powered off (critical)
+      # -----------------------------------------------------------------------
+      # BMC is reachable but reports the server chassis is powered off.
+      # Unless this is a planned shutdown, this indicates an unexpected
+      # power loss or someone powered down the server.
+      # -----------------------------------------------------------------------
+      - alert: RedfishServerPoweredOff
+        expr: |
+          redfish_power_state{job="redfish"} == 0
+          and
+          redfish_up{job="redfish"} == 1
+        for: 5m
+        labels:
+          severity: critical
+          category: hardware
+        annotations:
+          summary: >-
+            Server {{ $labels.device_name }} ({{ $labels.instance }})
+            is powered off
+          description: >-
+            BMC for {{ $labels.device_name }} ({{ $labels.vendor }})
+            in {{ $labels.datacenter }} is reachable but reports the
+            server chassis is powered off.
+            If this was not a planned shutdown, investigate immediately.
+            Power can be restored via the BMC console.
+          runbook_url: "https://wiki.example.com/runbooks/server-powered-off"
+          dashboard_url: "/d/hardware-overview/hardware-health?var-datacenter={{ $labels.datacenter }}"
+
+  - name: hardware_component_alerts
+    rules:
+      # -----------------------------------------------------------------------
+      # Drive health degraded (warning)
+      # -----------------------------------------------------------------------
+      # A storage drive is reporting non-OK health. Could indicate predictive
+      # failure (SMART warning) or degraded RAID state. Schedule replacement
+      # before complete failure.
+      # -----------------------------------------------------------------------
+      - alert: RedfishDriveUnhealthy
+        expr: |
+          redfish_drive_health{job="redfish"} != 0
+        for: 5m
+        labels:
+          severity: warning
+          category: hardware
+        annotations:
+          summary: >-
+            Drive health issue on {{ $labels.device_name }}
+            ({{ $labels.instance }})
+          description: >-
+            A storage drive on {{ $labels.device_name }} ({{ $labels.vendor }})
+            in {{ $labels.datacenter }} reports non-healthy status.
+            Check BMC console for specific drive location and SMART data.
+            Schedule proactive replacement if predictive failure detected.
+          runbook_url: "https://wiki.example.com/runbooks/drive-health"
+          dashboard_url: "/d/hardware-overview/hardware-health?var-datacenter={{ $labels.datacenter }}"
+
+      # -----------------------------------------------------------------------
+      # Memory health degraded (warning)
+      # -----------------------------------------------------------------------
+      # A DIMM module is reporting correctable errors or degraded health.
+      # Servers can often continue operating with reduced memory, but the
+      # failing DIMM should be replaced at the next maintenance window.
+      # -----------------------------------------------------------------------
+      - alert: RedfishMemoryUnhealthy
+        expr: |
+          redfish_memory_health{job="redfish"} != 0
+        for: 5m
+        labels:
+          severity: warning
+          category: hardware
+        annotations:
+          summary: >-
+            Memory health issue on {{ $labels.device_name }}
+            ({{ $labels.instance }})
+          description: >-
+            A memory module on {{ $labels.device_name }} ({{ $labels.vendor }})
+            in {{ $labels.datacenter }} reports non-healthy status.
+            Check BMC console for DIMM location and error counts.
+            Schedule DIMM replacement at next maintenance window.
+          runbook_url: "https://wiki.example.com/runbooks/memory-health"
+          dashboard_url: "/d/hardware-overview/hardware-health?var-datacenter={{ $labels.datacenter }}"

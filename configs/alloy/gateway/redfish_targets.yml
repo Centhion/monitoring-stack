@@ -1,0 +1,83 @@
+# =============================================================================
+# Redfish Hardware Target Inventory (Phase 7B)
+# =============================================================================
+# Lists BMC management interfaces (iLO / iDRAC) to monitor via the Redfish
+# API exporter sidecar. Each entry maps to a physical server's out-of-band
+# management controller.
+#
+# This file is a reference template. The actual targets are defined in the
+# prometheus.scrape "redfish" block in site_gateway.alloy using the
+# multi-target pattern (one exporter instance, multiple BMC targets via
+# __param_target).
+#
+# When deploying a new site, copy this template and fill in the BMC IPs,
+# hostnames, and labels for each physical server at that site.
+#
+# Required: The Redfish exporter sidecar must be running on the same host
+# as the Alloy site gateway container. It listens on localhost:9220 by
+# default and accepts the target BMC address as a URL parameter.
+#
+# Label taxonomy:
+#   datacenter   -- site identifier (populated from ALLOY_DATACENTER env var)
+#   environment  -- prod, staging, dev (populated from ALLOY_ENV env var)
+#   device_type  -- always "server_bmc" for Redfish targets
+#   vendor       -- "hpe" (iLO) or "dell" (iDRAC)
+#   device_name  -- human-readable server name for dashboard display
+#   bmc_type     -- "ilo" or "idrac" for vendor-specific dashboard filtering
+# =============================================================================
+
+# -------------------------------------------------------------------------
+# Example Target Entries
+# -------------------------------------------------------------------------
+# Uncomment and customize for each site's physical servers.
+# Each target in site_gateway.alloy follows this structure:
+#
+#   {
+#     "__address__"     = "localhost:9220",       # Redfish exporter sidecar
+#     "__param_target"  = "10.0.1.50",            # BMC management IP
+#     "instance"        = "10.0.1.50",            # Instance label for Prometheus
+#     "device_name"     = "ESXi Host 01 iLO",     # Human-readable name
+#     "vendor"          = "hpe",                   # hpe or dell
+#     "device_type"     = "server_bmc",            # Fixed device type
+#     "bmc_type"        = "ilo",                   # ilo or idrac
+#   }
+# -------------------------------------------------------------------------
+
+# --- HPE ProLiant Servers (iLO) ---
+#
+# - name: "esxi-host-01"
+#   bmc_ip: "10.0.1.50"
+#   vendor: "hpe"
+#   bmc_type: "ilo"
+#   device_name: "ESXi Host 01 iLO"
+#   notes: "DL380 Gen10, ESXi 8.0, Production cluster"
+#
+# - name: "esxi-host-02"
+#   bmc_ip: "10.0.1.51"
+#   vendor: "hpe"
+#   bmc_type: "ilo"
+#   device_name: "ESXi Host 02 iLO"
+#   notes: "DL380 Gen10, ESXi 8.0, Production cluster"
+#
+# - name: "sql-server-01"
+#   bmc_ip: "10.0.1.52"
+#   vendor: "hpe"
+#   bmc_type: "ilo"
+#   device_name: "SQL Server 01 iLO"
+#   notes: "DL360 Gen10, SQL Server 2022"
+
+# --- Dell PowerEdge Servers (iDRAC) ---
+#
+# - name: "app-server-01"
+#   bmc_ip: "10.0.1.60"
+#   vendor: "dell"
+#   bmc_type: "idrac"
+#   device_name: "App Server 01 iDRAC"
+#   notes: "R740, Windows Server 2022, Application tier"
+#
+# - name: "file-server-01"
+#   bmc_ip: "10.0.1.61"
+#   vendor: "dell"
+#   bmc_type: "idrac"
+#   device_name: "File Server 01 iDRAC"
+#   notes: "R740xd, Windows Server 2022, File services"

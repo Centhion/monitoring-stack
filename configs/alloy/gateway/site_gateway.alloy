@@ -1,0 +1,280 @@
+// =============================================================================
+// Site Gateway -- Unified Pull-Based Monitoring (Phases 7A, 7B, 7C)
+// =============================================================================
+// Single Alloy instance per site that handles all pull-based monitoring:
+//   - SNMP polling (switches, firewalls, APs, UPS, NAS)
+//   - Certificate probing (HTTPS + TCP/TLS endpoints via Blackbox)
+//   - Hardware health (iLO, iDRAC via Redfish API exporter)
+//
+// This config runs as a container/pod on a Docker host at each site with
+// management VLAN access. It does NOT run on monitored devices.
+//
+// Required environment variables:
+//   ALLOY_DATACENTER             -- site identifier for labeling
+//   ALLOY_ENV                    -- environment (prod, staging, dev)
+//   PROMETHEUS_REMOTE_WRITE_URL  -- Prometheus endpoint
+//   LOKI_WRITE_URL               -- Loki endpoint (for SNMP trap logs)
+//
+// Required config files (mounted via volume or ConfigMap):
+//   /etc/alloy/snmp_auths.yml        -- SNMP auth profiles
+//   /etc/alloy/blackbox_modules.yml   -- Blackbox probe modules
+//
+// Usage:
+//   docker run -v ./configs:/etc/alloy grafana/alloy run /etc/alloy/gateway/
+// =============================================================================
+
+// ---------------------------------------------------------------------------
+// Remote Write -- Push metrics to Prometheus
+// ---------------------------------------------------------------------------
+prometheus.remote_write "gateway" {
+  endpoint {
+    url = sys.env("PROMETHEUS_REMOTE_WRITE_URL")
+
+    queue_config {
+      capacity             = 2500
+      max_shards           = 4
+      max_samples_per_send = 500
+    }
+  }
+
+  external_labels = {
+    environment = sys.env("ALLOY_ENV"),
+    datacenter  = sys.env("ALLOY_DATACENTER"),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Loki Push -- Push SNMP trap logs to Loki
+// ---------------------------------------------------------------------------
+loki.write "gateway" {
+  endpoint {
+    url = sys.env("LOKI_WRITE_URL")
+  }
+
+  external_labels = {
+    environment = sys.env("ALLOY_ENV"),
+    datacenter  = sys.env("ALLOY_DATACENTER"),
+  }
+}
+
+// =============================================================================
+// SNMP Polling (Phase 7A)
+// =============================================================================
+// Polls network devices via embedded snmp_exporter. Auth profiles are loaded
+// from an external YAML file and merged with the built-in default modules
+// (system, if_mib, etc.). Target blocks are added per-site during deployment.
+//
+// Scrape interval: 60s (network interface counters benefit from regular polling
+// for accurate rate calculations without being so frequent it burdens devices).
+// =============================================================================
+
+prometheus.exporter.snmp "network" {
+  config_file           = "/etc/alloy/snmp_auths.yml"
+  config_merge_strategy = "merge"
+
+  // -------------------------------------------------------------------------
+  // SNMP targets -- populated per-site during deployment.
+  // Uncomment and customize for each site's devices.
+  // See snmp_targets.yml for the inventory template.
+  //
+  // Module reference:
+  //   system           -- sysUpTime, sysName, sysDescr (all devices)
+  //   if_mib           -- interface traffic, errors, status (all devices)
+  //   paloalto         -- PAN-MIB enterprise metrics (Palo Alto only)
+  //   ubiquiti_unifi   -- UniFi-specific metrics (Ubiquiti only)
+  //   apcups           -- UPS battery, power, temperature (APC only)
+  // -------------------------------------------------------------------------
+
+  // target "core-sw01" {
+  //   address = "10.0.1.1"
+  //   module  = "system,if_mib"
+  //   auth    = "community_v2"
+  //   labels  = {
+  //     device_type = "switch",
+  //     vendor      = "cisco",
+  //     device_name = "Core Switch 01",
+  //   }
+  // }
+
+  // target "fw01" {
+  //   address = "10.0.1.2"
+  //   module  = "system,if_mib,paloalto"
+  //   auth    = "secure_v3"
+  //   labels  = {
+  //     device_type = "firewall",
+  //     vendor      = "paloalto",
+  //     device_name = "PA-3260 Primary",
+  //   }
+  // }
+
+  // target "ap-lobby-01" {
+  //   address = "10.0.2.10"
+  //   module  = "system,if_mib,ubiquiti_unifi"
+  //   auth    = "community_v2"
+  //   labels  = {
+  //     device_type = "access_point",
+  //     vendor      = "ubiquiti",
+  //     device_name = "Lobby AP 01",
+  //   }
+  // }
+}
+
+prometheus.scrape "snmp" {
+  targets         = prometheus.exporter.snmp.network.targets
+  forward_to      = [prometheus.relabel.gateway_labels.receiver]
+  scrape_interval = "60s"
+  scrape_timeout  = "20s"
+  job_name        = "snmp"
+}
+
+// =============================================================================
+// Certificate Probing (Phase 7C)
+// =============================================================================
+// Probes HTTPS and TCP/TLS endpoints for certificate expiry monitoring.
+// See role_cert_monitor.alloy for the standalone version; this section
+// integrates cert monitoring into the unified gateway.
+// =============================================================================
+
+prometheus.exporter.blackbox "cert_monitor" {
+  config_file = "/etc/alloy/blackbox_modules.yml"
+
+  // -------------------------------------------------------------------------
+  // Certificate targets -- populated per-site during deployment.
+  // See configs/alloy/certs/endpoints.yml for the inventory template.
+  // -------------------------------------------------------------------------
+
+  // target {
+  //   name    = "portal-prod"
+  //   address = "https://portal.example.com"
+  //   module  = "https_cert_check"
+  //   labels  = {
+  //     cert_type = "public",
+  //     service   = "Guest Portal",
+  //     owner     = "web-team",
+  //   }
+  // }
+
+  // target {
+  //   name    = "ldaps-dc01"
+  //   address = "dc01.corp.example.com:636"
+  //   module  = "tcp_tls_cert_check"
+  //   labels  = {
+  //     cert_type = "pki",
+  //     service   = "LDAPS (DC01)",
+  //     owner     = "ad-team",
+  //   }
+  // }
+}
+
+prometheus.scrape "cert_monitor" {
+  targets         = prometheus.exporter.blackbox.cert_monitor.targets
+  forward_to      = [prometheus.relabel.gateway_labels.receiver]
+  scrape_interval = "5m"
+  scrape_timeout  = "15s"
+  job_name        = "cert_monitor"
+}
+
+// =============================================================================
+// Hardware Health via Redfish (Phase 7B)
+// =============================================================================
+// Polls iLO and iDRAC management interfaces via an external Redfish exporter.
+// The exporter runs as a sidecar container and exposes metrics on a local port.
+// Alloy scrapes it using the standard multi-target pattern.
+//
+// Scrape interval: 120s (hardware state changes slowly and Redfish API calls
+// are heavier than SNMP -- each poll queries multiple Redfish endpoints).
+//
+// This section scrapes an external exporter rather than using an embedded
+// component, because Alloy does not have a native Redfish exporter.
+// =============================================================================
+
+// ---------------------------------------------------------------------------
+// Redfish Exporter Targets
+// ---------------------------------------------------------------------------
+// Each target represents a BMC management interface (iLO or iDRAC IP).
+// The exporter uses the multi-target pattern: one exporter instance handles
+// all BMC targets, with the target address passed as a URL parameter.
+//
+// Uncomment and customize for each site's hardware.
+// See configs/alloy/gateway/redfish_targets.yml for the inventory template.
+// ---------------------------------------------------------------------------
+
+// prometheus.scrape "redfish" {
+//   targets = [
+//     {
+//       "__address__" = "localhost:9220",
+//       "__param_target" = "10.0.1.50",
+//       "instance" = "10.0.1.50",
+//       "device_name" = "ESXi Host 01 iLO",
+//       "vendor" = "hpe",
+//       "device_type" = "server_bmc",
+//     },
+//     {
+//       "__address__" = "localhost:9220",
+//       "__param_target" = "10.0.1.51",
+//       "instance" = "10.0.1.51",
+//       "device_name" = "ESXi Host 02 iDRAC",
+//       "vendor" = "dell",
+//       "device_type" = "server_bmc",
+//     },
+//   ]
+//   forward_to      = [prometheus.relabel.gateway_labels.receiver]
+//   scrape_interval = "120s"
+//   scrape_timeout  = "30s"
+//   job_name        = "redfish"
+//   metrics_path    = "/redfish"
+// }
+
+// =============================================================================
+// Standard Label Enrichment
+// =============================================================================
+// Adds datacenter and environment labels to all gateway metrics for
+// consistency with the agent-based metrics pipeline and dashboard filtering.
+// =============================================================================
+
+prometheus.relabel "gateway_labels" {
+  forward_to = [prometheus.remote_write.gateway.receiver]
+
+  rule {
+    target_label = "datacenter"
+    replacement  = sys.env("ALLOY_DATACENTER")
+  }
+
+  rule {
+    target_label = "environment"
+    replacement  = sys.env("ALLOY_ENV")
+  }
+}
+
+// =============================================================================
+// SNMP Trap Receiver (Phase 7A -- optional)
+// =============================================================================
+// Receives SNMP traps forwarded from snmptrapd via syslog. The snmptrapd
+// process runs as a sidecar and translates traps to syslog messages on
+// UDP localhost:1514. Alloy ingests them into Loki as structured logs.
+//
+// Uncomment when trap ingestion is needed.
+// =============================================================================
+
+// loki.source.syslog "snmp_traps" {
+//   listener {
+//     address  = "0.0.0.0:1514"
+//     protocol = "udp"
+//     labels   = {
+//       job    = "snmp_traps",
+//       source = "snmptrapd",
+//     }
+//   }
+//   forward_to = [loki.process.trap_labels.receiver]
+// }
+
+// loki.process "trap_labels" {
+//   forward_to = [loki.write.gateway.receiver]
+//
+//   stage.static_labels {
+//     values = {
+//       datacenter  = sys.env("ALLOY_DATACENTER"),
+//       environment = sys.env("ALLOY_ENV"),
+//     }
+//   }
+// }

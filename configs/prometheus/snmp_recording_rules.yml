@@ -1,0 +1,132 @@
+# =============================================================================
+# SNMP Network Device Recording Rules (Phase 7A)
+# =============================================================================
+# Pre-compute interface-level rates and site-level aggregations for the
+# Network Infrastructure dashboard and Enterprise NOC / Site Overview hubs.
+#
+# These rules consume raw SNMP metrics from the snmp_exporter embedded in
+# Alloy's site gateway (site_gateway.alloy).
+#
+# Two rule groups:
+#   snmp_interface_rules  -- per-interface rate/utilization calculations
+#   snmp_site_rules       -- per-datacenter aggregations for hub dashboards
+#
+# Naming convention: <scope>:<metric>:<aggregation>
+# =============================================================================
+
+groups:
+  # ---------------------------------------------------------------------------
+  # Interface-Level Rates
+  # Converts raw SNMP counters into usable rates and utilization ratios.
+  # These feed both the Network Infrastructure dashboard and the site-level
+  # aggregation rules below.
+  # ---------------------------------------------------------------------------
+  - name: snmp_interface_rules
+    interval: 60s
+    rules:
+      # Inbound traffic rate per interface in bytes/sec.
+      # Uses 64-bit HC counters to avoid 32-bit wrap on high-speed links.
+      - record: interface:traffic_in:rate5m
+        expr: |
+          rate(ifHCInOctets{job="snmp"}[5m])
+
+      # Outbound traffic rate per interface in bytes/sec.
+      - record: interface:traffic_out:rate5m
+        expr: |
+          rate(ifHCOutOctets{job="snmp"}[5m])
+
+      # Combined inbound + outbound traffic rate per interface in bytes/sec.
+      # Useful for total bandwidth consumption views.
+      - record: interface:traffic_total:rate5m
+        expr: |
+          rate(ifHCInOctets{job="snmp"}[5m])
+          +
+          rate(ifHCOutOctets{job="snmp"}[5m])
+
+      # Inbound error rate per interface in errors/sec.
+      - record: interface:errors_in:rate5m
+        expr: |
+          rate(ifInErrors{job="snmp"}[5m])
+
+      # Outbound error rate per interface in errors/sec.
+      - record: interface:errors_out:rate5m
+        expr: |
+          rate(ifOutErrors{job="snmp"}[5m])
+
+      # Inbound discard rate per interface in discards/sec.
+      # Discards indicate buffer overflows or QoS policy drops.
+      - record: interface:discards_in:rate5m
+        expr: |
+          rate(ifInDiscards{job="snmp"}[5m])
+
+      # Outbound discard rate per interface in discards/sec.
+      - record: interface:discards_out:rate5m
+        expr: |
+          rate(ifOutDiscards{job="snmp"}[5m])
+
+      # Inbound utilization ratio (0.0 - 1.0) based on interface speed.
+      # Multiply bytes by 8 to get bits, then divide by link speed in bps.
+      # Only meaningful on interfaces with a reported speed > 0.
+      - record: interface:utilization_in:ratio
+        expr: |
+          (rate(ifHCInOctets{job="snmp"}[5m]) * 8)
+          /
+          (ifSpeed{job="snmp"} > 0)
+
+      # Outbound utilization ratio (0.0 - 1.0).
+      - record: interface:utilization_out:ratio
+        expr: |
+          (rate(ifHCOutOctets{job="snmp"}[5m]) * 8)
+          /
+          (ifSpeed{job="snmp"} > 0)
+
+  # ---------------------------------------------------------------------------
+  # Site-Level SNMP Aggregations
+  # Pre-aggregated counts for the Enterprise NOC and Site Overview dashboards.
+  # ---------------------------------------------------------------------------
+  - name: snmp_site_rules
+    interval: 60s
+    rules:
+      # Total SNMP-monitored devices responding per site.
+      - record: site:snmp_devices:count
+        expr: |
+          count by (datacenter, environment) (
+            up{job="snmp"} == 1
+          )
+
+      # SNMP devices unreachable per site (scrape target up but no response).
+      - record: site:snmp_devices_down:count
+        expr: |
+          count by (datacenter, environment) (
+            up{job="snmp"} == 0
+          )
+
+      # Interfaces in operationally down state where admin status is up.
+      # Admin-down interfaces are intentionally disabled and excluded.
+      # ifOperStatus: 1=up, 2=down; ifAdminStatus: 1=up, 2=down
+      - record: site:interfaces_down:count
+        expr: |
+          count by (datacenter, environment) (
+            ifOperStatus{job="snmp"} == 2
+            and
+            ifAdminStatus{job="snmp"} == 1
+          )
+
+      # Interfaces exceeding 80% utilization in either direction per site.
+      # High utilization on trunk/uplink ports may indicate capacity issues.
+      - record: site:interfaces_high_util:count
+        expr: |
+          count by (datacenter, environment) (
+            (interface:utilization_in:ratio > 0.8)
+            or
+            (interface:utilization_out:ratio > 0.8)
+          )
+
+      # Interfaces experiencing errors per site (any non-zero error rate).
+      - record: site:interfaces_with_errors:count
+        expr: |
+          count by (datacenter, environment) (
+            (interface:errors_in:rate5m > 0)
+            or
+            (interface:errors_out:rate5m > 0)
+          )

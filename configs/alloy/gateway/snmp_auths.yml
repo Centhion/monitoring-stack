@@ -1,0 +1,61 @@
+# =============================================================================
+# SNMP Authentication Profiles (Phase 7A)
+# =============================================================================
+# Named authentication profiles referenced by target definitions in the
+# gateway Alloy config. These are merged with the embedded default SNMP
+# modules (system, if_mib, etc.) via config_merge_strategy = "merge".
+#
+# SECURITY: This file contains SNMP credentials. In production:
+#   - Use environment variable substitution (requires --config.expand-env)
+#   - Store in Kubernetes Secret (mounted as file)
+#   - Never commit production credentials to version control
+#
+# Mounted at: /etc/alloy/snmp_auths.yml
+# =============================================================================
+
+auths:
+  # ---------------------------------------------------------------------------
+  # SNMPv2c -- simple community string authentication
+  # ---------------------------------------------------------------------------
+  # Use for devices that only support SNMPv2c. Less secure than v3 but
+  # simpler to configure. Community string acts as a shared password.
+  # ---------------------------------------------------------------------------
+
+  # Default read-only community (replace with your actual community string)
+  # community_v2:
+  #   community: "${SNMP_COMMUNITY_STRING}"
+  #   version: 2
+
+  # ---------------------------------------------------------------------------
+  # SNMPv3 -- full authentication and encryption
+  # ---------------------------------------------------------------------------
+  # Recommended for production. Provides authentication (SHA/MD5) and
+  # encryption (AES/DES) of SNMP traffic. Requires matching user config
+  # on each network device.
+  # ---------------------------------------------------------------------------
+
+  # Full auth + encryption profile (recommended for production)
+  # secure_v3:
+  #   version: 3
+  #   security_level: authPriv
+  #   username: "${SNMP_V3_USERNAME}"
+  #   password: "${SNMP_V3_AUTH_PASSWORD}"
+  #   auth_protocol: SHA256
+  #   priv_protocol: AES
+  #   priv_password: "${SNMP_V3_PRIV_PASSWORD}"
+
+  # Auth-only profile (no encryption, lighter on device CPU)
+  # auth_v3:
+  #   version: 3
+  #   security_level: authNoPriv
+  #   username: "${SNMP_V3_USERNAME}"
+  #   password: "${SNMP_V3_AUTH_PASSWORD}"
+  #   auth_protocol: SHA256
+
+  # ---------------------------------------------------------------------------
+  # Placeholder profile for local testing (uses default "public" community)
+  # Uncomment this for Docker Compose PoC testing only.
+  # ---------------------------------------------------------------------------
+  public_v2:
+    community: public
+    version: 2

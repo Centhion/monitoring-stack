@@ -1,0 +1,107 @@
+# =============================================================================
+# SNMP Target Inventory (Phase 7A)
+# =============================================================================
+# Master list of network devices to poll via SNMP. Each entry becomes a
+# target in the gateway Alloy config. This file is per-site -- each site
+# gateway deployment gets its own copy with local device addresses.
+#
+# Adding a new device:
+#   1. Add an entry below with all required fields
+#   2. Restart the gateway Alloy container (or wait for config reload)
+#   3. The device appears in the Network Infrastructure dashboard
+#
+# Fields:
+#   name        -- unique identifier (used as job label suffix)
+#   address     -- device management IP or hostname
+#   module      -- comma-separated SNMP modules to poll:
+#                    system     -- sysUpTime, sysName, sysDescr, sysLocation
+#                    if_mib     -- interface traffic, errors, status (works on all devices)
+#                    paloalto   -- PAN-MIB enterprise metrics (firewalls only)
+#                    ubiquiti_unifi -- UniFi-specific metrics (UniFi gear only)
+#   auth        -- named auth profile from snmp_auths.yml
+#   labels      -- custom labels for dashboard filtering
+#     datacenter  -- site/resort this device belongs to
+#     environment -- prod, staging, dev
+#     device_type -- switch, firewall, access_point, ups, nas
+#     vendor      -- cisco, paloalto, ubiquiti, apc, synology
+#     device_name -- human-readable device name for dashboard display
+#
+# IMPORTANT: This file is a TEMPLATE. Replace placeholder entries with
+# actual device addresses for your environment.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# PLACEHOLDER TARGETS -- replace with your actual devices
+# -----------------------------------------------------------------------------
+
+targets:
+
+  # --- Cisco Switches ---
+  # Standard modules: system + if_mib covers interface traffic, errors, status.
+  # Cisco-specific CPU/memory metrics require custom module generation from
+  # CISCO-PROCESS-MIB (not included in defaults, add when needed).
+
+  # - name: "core-sw01"
+  #   address: "10.0.1.1"
+  #   module: "system,if_mib"
+  #   auth: "community_v2"
+  #   labels:
+  #     datacenter: "resort-alpha"
+  #     environment: "prod"
+  #     device_type: "switch"
+  #     vendor: "cisco"
+  #     device_name: "Core Switch 01"
+
+  # - name: "access-sw01"
+  #   address: "10.0.1.10"
+  #   module: "system,if_mib"
+  #   auth: "community_v2"
+  #   labels:
+  #     datacenter: "resort-alpha"
+  #     environment: "prod"
+  #     device_type: "switch"
+  #     vendor: "cisco"
+  #     device_name: "Access Switch 01"
+
+  # --- Palo Alto Firewalls ---
+  # paloalto module adds PAN-MIB enterprise metrics on top of standard
+  # system + if_mib (session counts, GlobalProtect, threat stats).
+
+  # - name: "fw01"
+  #   address: "10.0.1.2"
+  #   module: "system,if_mib,paloalto"
+  #   auth: "secure_v3"
+  #   labels:
+  #     datacenter: "resort-alpha"
+  #     environment: "prod"
+  #     device_type: "firewall"
+  #     vendor: "paloalto"
+  #     device_name: "PA-3260 Primary"
+
+  # --- Ubiquiti Access Points / Switches ---
+  # ubiquiti_unifi module adds UniFi-specific metrics (client counts,
+  # signal strength, channel utilization).
+
+  # - name: "ap-lobby-01"
+  #   address: "10.0.2.10"
+  #   module: "system,if_mib,ubiquiti_unifi"
+  #   auth: "community_v2"
+  #   labels:
+  #     datacenter: "resort-alpha"
+  #     environment: "prod"
+  #     device_type: "access_point"
+  #     vendor: "ubiquiti"
+  #     device_name: "Lobby AP 01"
+
+  # --- UPS / Power ---
+
+  # - name: "ups-mdf-01"
+  #   address: "10.0.1.100"
+  #   module: "system,apcups"
+  #   auth: "community_v2"
+  #   labels:
+  #     datacenter: "resort-alpha"
+  #     environment: "prod"
+  #     device_type: "ups"
+  #     vendor: "apc"
+  #     device_name: "MDF UPS 01"

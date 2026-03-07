@@ -1,0 +1,104 @@
+# =============================================================================
+# Hardware Health Recording Rules (Phase 7B)
+# =============================================================================
+# Pre-compute hardware health aggregations for the Hardware Health dashboard
+# and the Enterprise NOC / Site Overview hub dashboards.
+#
+# These rules consume metrics from the Redfish API exporter sidecar running
+# alongside the Alloy site gateway. The exporter polls iLO/iDRAC BMC
+# interfaces and exposes hardware telemetry as Prometheus metrics.
+#
+# Common Redfish exporter metrics consumed:
+#   redfish_up                        -- exporter scrape success (1/0)
+#   redfish_power_state               -- server power (1=on, 0=off)
+#   redfish_health                    -- overall system health (0=OK, 1=Warning, 2=Critical)
+#   redfish_temperature_celsius       -- temperature sensor readings
+#   redfish_fan_health                -- fan subsystem health
+#   redfish_power_consumed_watts      -- real-time power consumption
+#   redfish_drive_health              -- storage drive health
+#   redfish_memory_health             -- DIMM health
+#   redfish_processor_health          -- CPU health
+#
+# Naming convention: <scope>:<metric>:<aggregation>
+# =============================================================================
+
+groups:
+  # ---------------------------------------------------------------------------
+  # Server-Level Hardware Health
+  # Normalizes exporter-specific metrics into consistent health indicators.
+  # ---------------------------------------------------------------------------
+  - name: hardware_server_rules
+    interval: 120s
+    rules:
+      # Maximum temperature reading across all sensors per server.
+      # Surfaces the hottest component for threshold alerting.
+      - record: server:temperature_max:celsius
+        expr: |
+          max by (instance, device_name, vendor, datacenter, environment) (
+            redfish_temperature_celsius{job="redfish"}
+          )
+
+      # Total server power consumption in watts per server.
+      # Some servers expose multiple power supplies; sum gives total draw.
+      - record: server:power_consumed:watts
+        expr: |
+          sum by (instance, device_name, vendor, datacenter, environment) (
+            redfish_power_consumed_watts{job="redfish"}
+          )
+
+  # ---------------------------------------------------------------------------
+  # Site-Level Hardware Aggregations
+  # Pre-aggregated counts for the Enterprise NOC and Site Overview dashboards.
+  # ---------------------------------------------------------------------------
+  - name: hardware_site_rules
+    interval: 120s
+    rules:
+      # Total BMC endpoints responding per site.
+      - record: site:hardware_monitored:count
+        expr: |
+          count by (datacenter, environment) (
+            redfish_up{job="redfish"} == 1
+          )
+
+      # BMC endpoints unreachable per site.
+      - record: site:hardware_unreachable:count
+        expr: |
+          count by (datacenter, environment) (
+            redfish_up{job="redfish"} == 0
+          )
+
+      # Servers reporting healthy status (health == 0 means OK) per site.
+      - record: site:hardware_healthy:count
+        expr: |
+          count by (datacenter, environment) (
+            redfish_health{job="redfish"} == 0
+          )
+
+      # Servers reporting warning health status per site.
+      - record: site:hardware_warning:count
+        expr: |
+          count by (datacenter, environment) (
+            redfish_health{job="redfish"} == 1
+          )
+
+      # Servers reporting critical health status per site.
+      - record: site:hardware_critical:count
+        expr: |
+          count by (datacenter, environment) (
+            redfish_health{job="redfish"} == 2
+          )
+
+      # Total power consumption across all monitored servers at a site.
+      - record: site:power_consumed:watts
+        expr: |
+          sum by (datacenter, environment) (
+            server:power_consumed:watts
+          )
+
+      # Maximum temperature across all servers at a site.
+      # Surfaces the single hottest reading across the entire site.
+      - record: site:temperature_max:celsius
+        expr: |
+          max by (datacenter, environment) (
+            server:temperature_max:celsius
+          )

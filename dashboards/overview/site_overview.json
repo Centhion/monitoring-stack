@@ -1380,173 +1380,107 @@
     },
     {
       "collapsed": true,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 35
-      },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 },
       "id": 15,
       "panels": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "description": "Placeholder for SNMP network device monitoring at this site. Will be populated when Phase 7A ships.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "description": "SNMP network devices at this site with status and interface health summary.",
           "fieldConfig": {
             "defaults": {
-              "color": {
-                "mode": "thresholds"
-              },
-              "mappings": [
-                {
-                  "options": {
-                    "match": "null",
-                    "result": {
-                      "text": "Pending Phase 7A"
-                    }
-                  },
-                  "type": "special"
-                }
-              ],
-              "noValue": "Pending Phase 7A",
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "text",
-                    "value": null
-                  }
-                ]
-              }
+              "color": { "mode": "thresholds" },
+              "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false },
+              "mappings": [],
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+            },
+            "overrides": [
+              { "matcher": { "id": "byName", "options": "Status" }, "properties": [{ "id": "custom.cellOptions", "value": { "mode": "basic", "type": "color-background" } }, { "id": "mappings", "value": [{ "options": { "0": { "color": "red", "text": "DOWN" }, "1": { "color": "green", "text": "UP" } }, "type": "value" }] }, { "id": "custom.width", "value": 80 }] },
+              { "matcher": { "id": "byName", "options": "Uptime" }, "properties": [{ "id": "unit", "value": "dtdurations" }, { "id": "custom.width", "value": 140 }] },
+              { "matcher": { "id": "byName", "options": "Device" }, "properties": [{ "id": "links", "value": [{ "targetBlank": false, "title": "Network Infrastructure", "url": "/d/network-overview/network-infrastructure?var-datacenter=$datacenter&var-environment=$environment" }] }, { "id": "custom.width", "value": 200 }] }
+            ]
+          },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 36 },
+          "id": 16,
+          "options": { "cellHeight": "sm", "footer": { "countRows": true, "fields": "", "reducer": ["count"], "show": true }, "showHeader": true, "sortBy": [{ "desc": false, "displayName": "Status" }] },
+          "pluginVersion": "10.4.0",
+          "targets": [
+            { "datasource": { "type": "prometheus", "uid": "prometheus" }, "editorMode": "code", "exemplar": false, "expr": "up{job=\"snmp\", datacenter=~\"$datacenter\", environment=~\"$environment\"}", "format": "table", "instant": true, "legendFormat": "", "range": false, "refId": "Status" },
+            { "datasource": { "type": "prometheus", "uid": "prometheus" }, "editorMode": "code", "exemplar": false, "expr": "sysUpTime{job=\"snmp\", datacenter=~\"$datacenter\", environment=~\"$environment\"} / 100", "format": "table", "instant": true, "legendFormat": "", "range": false, "refId": "Uptime" }
+          ],
+          "title": "Network Devices at This Site",
+          "transformations": [
+            { "id": "merge", "options": {} },
+            { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true, "environment": true, "datacenter": true }, "renameByName": { "device_name": "Device", "device_type": "Type", "instance": "IP Address", "vendor": "Vendor", "Value #Status": "Status", "Value #Uptime": "Uptime" } } }
+          ],
+          "type": "table"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "description": "Aggregate traffic per device at this site.",
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 20, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": true, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+              "mappings": [],
+              "unit": "Bps"
             },
             "overrides": []
           },
-          "gridPos": {
-            "h": 4,
-            "w": 24,
-            "x": 0,
-            "y": 36
-          },
-          "id": 16,
-          "options": {
-            "colorMode": "value",
-            "graphMode": "none",
-            "justifyMode": "auto",
-            "orientation": "auto",
-            "reduceOptions": {
-              "calcs": ["lastNotNull"],
-              "fields": "",
-              "values": false
-            },
-            "textMode": "auto",
-            "wideLayout": true
-          },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 44 },
+          "id": 30,
+          "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
           "pluginVersion": "10.4.0",
           "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              },
-              "editorMode": "code",
-              "expr": "",
-              "legendFormat": "",
-              "range": true,
-              "refId": "A"
-            }
+            { "datasource": { "type": "prometheus", "uid": "prometheus" }, "editorMode": "code", "expr": "sum by (device_name) (interface:traffic_total:rate5m{datacenter=~\"$datacenter\", environment=~\"$environment\"})", "legendFormat": "{{ device_name }}", "range": true, "refId": "A" }
           ],
-          "title": "Network Devices at This Site",
-          "type": "stat"
+          "title": "Total Traffic by Device",
+          "type": "timeseries"
         }
       ],
-      "title": "Network Infrastructure (Phase 7A)"
+      "title": "Network Infrastructure"
     },
     {
       "collapsed": true,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 36
-      },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
       "id": 17,
       "panels": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "description": "Placeholder for Redfish/IPMI hardware health at this site. Will be populated when Phase 7B ships.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "description": "Server hardware health via Redfish API at this site.",
           "fieldConfig": {
             "defaults": {
-              "color": {
-                "mode": "thresholds"
-              },
-              "mappings": [
-                {
-                  "options": {
-                    "match": "null",
-                    "result": {
-                      "text": "Pending Phase 7B"
-                    }
-                  },
-                  "type": "special"
-                }
-              ],
-              "noValue": "Pending Phase 7B",
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "text",
-                    "value": null
-                  }
-                ]
-              }
+              "color": { "mode": "thresholds" },
+              "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false },
+              "mappings": [],
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
             },
-            "overrides": []
+            "overrides": [
+              { "matcher": { "id": "byName", "options": "Health" }, "properties": [{ "id": "custom.cellOptions", "value": { "mode": "basic", "type": "color-background" } }, { "id": "mappings", "value": [{ "options": { "0": { "color": "green", "text": "OK" }, "1": { "color": "orange", "text": "Warning" }, "2": { "color": "red", "text": "Critical" } }, "type": "value" }] }, { "id": "custom.width", "value": 90 }] },
+              { "matcher": { "id": "byName", "options": "Power" }, "properties": [{ "id": "custom.cellOptions", "value": { "mode": "basic", "type": "color-background" } }, { "id": "mappings", "value": [{ "options": { "0": { "color": "red", "text": "OFF" }, "1": { "color": "green", "text": "ON" } }, "type": "value" }] }, { "id": "custom.width", "value": 70 }] },
+              { "matcher": { "id": "byName", "options": "Max Temp" }, "properties": [{ "id": "unit", "value": "celsius" }, { "id": "custom.width", "value": 100 }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 75 }, { "color": "red", "value": 85 }] } }, { "id": "custom.cellOptions", "value": { "mode": "basic", "type": "color-background" } }] },
+              { "matcher": { "id": "byName", "options": "Power Draw" }, "properties": [{ "id": "unit", "value": "watt" }, { "id": "custom.width", "value": 110 }] },
+              { "matcher": { "id": "byName", "options": "Server" }, "properties": [{ "id": "links", "value": [{ "targetBlank": false, "title": "Hardware Health", "url": "/d/hardware-overview/hardware-health?var-datacenter=$datacenter&var-environment=$environment" }] }, { "id": "custom.width", "value": 220 }] }
+            ]
           },
-          "gridPos": {
-            "h": 4,
-            "w": 24,
-            "x": 0,
-            "y": 37
-          },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 37 },
           "id": 18,
-          "options": {
-            "colorMode": "value",
-            "graphMode": "none",
-            "justifyMode": "auto",
-            "orientation": "auto",
-            "reduceOptions": {
-              "calcs": ["lastNotNull"],
-              "fields": "",
-              "values": false
-            },
-            "textMode": "auto",
-            "wideLayout": true
-          },
+          "options": { "cellHeight": "sm", "footer": { "countRows": true, "fields": "", "reducer": ["count"], "show": true }, "showHeader": true, "sortBy": [{ "desc": true, "displayName": "Health" }] },
           "pluginVersion": "10.4.0",
           "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              },
-              "editorMode": "code",
-              "expr": "",
-              "legendFormat": "",
-              "range": true,
-              "refId": "A"
-            }
+            { "datasource": { "type": "prometheus", "uid": "prometheus" }, "editorMode": "code", "exemplar": false, "expr": "redfish_health{job=\"redfish\", datacenter=~\"$datacenter\", environment=~\"$environment\"}", "format": "table", "instant": true, "legendFormat": "", "range": false, "refId": "Health" },
+            { "datasource": { "type": "prometheus", "uid": "prometheus" }, "editorMode": "code", "exemplar": false, "expr": "redfish_power_state{job=\"redfish\", datacenter=~\"$datacenter\", environment=~\"$environment\"}", "format": "table", "instant": true, "legendFormat": "", "range": false, "refId": "Power" },
+            { "datasource": { "type": "prometheus", "uid": "prometheus" }, "editorMode": "code", "exemplar": false, "expr": "server:temperature_max:celsius{datacenter=~\"$datacenter\", environment=~\"$environment\"}", "format": "table", "instant": true, "legendFormat": "", "range": false, "refId": "Temp" },
+            { "datasource": { "type": "prometheus", "uid": "prometheus" }, "editorMode": "code", "exemplar": false, "expr": "server:power_consumed:watts{datacenter=~\"$datacenter\", environment=~\"$environment\"}", "format": "table", "instant": true, "legendFormat": "", "range": false, "refId": "PowerDraw" }
           ],
           "title": "Hardware Health at This Site",
-          "type": "stat"
+          "transformations": [
+            { "id": "merge", "options": {} },
+            { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true, "environment": true, "datacenter": true, "device_type": true, "bmc_type": true }, "renameByName": { "device_name": "Server", "instance": "BMC IP", "vendor": "Vendor", "Value #Health": "Health", "Value #Power": "Power", "Value #Temp": "Max Temp", "Value #PowerDraw": "Power Draw" } } }
+          ],
+          "type": "table"
         }
       ],
-      "title": "Hardware Health (Phase 7B)"
+      "title": "Hardware Health"
     },
     {
       "collapsed": true,
