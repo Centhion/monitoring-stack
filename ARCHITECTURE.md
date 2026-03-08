@@ -120,6 +120,110 @@ Monitoring_Dashboarding/
 +-- ARCHITECTURE.md              # This file
 ```
 
+## Label Taxonomy
+
+Every metric and log entry carries these standard labels, set via Alloy agent environment variables on each monitored server. These labels drive dashboard filtering, alert routing, and fleet grouping across the platform.
+
+| Label | Purpose | Example Values | Set By |
+|-------|---------|----------------|--------|
+| `environment` | Deployment stage | `production`, `staging`, `development` | `ALLOY_ENV` env var |
+| `datacenter` | Physical or logical site | `dc-east`, `dc-west`, `cloud-us` | `ALLOY_DATACENTER` env var |
+| `role` | Server function | `dc`, `sql`, `iis`, `file`, `docker` | `ALLOY_ROLE` env var |
+| `os` | Operating system | `windows`, `linux` | Auto-detected by Alloy |
+| `hostname` | Server name | `web01`, `db-prod-03` | Auto-detected (`constants.hostname`) |
+
+**Why labels matter**: Alertmanager routes alerts by `datacenter` to site-specific email distribution lists. Grafana dashboard template variables filter by `environment`, `datacenter`, `role`, and `hostname`. Recording rules aggregate by `datacenter` for site-level metrics. Getting labels right during agent deployment is the most impactful configuration step.
+
+## Data Flow: Future State (Mimir)
+
+The current data flow (above) uses Prometheus as both the metrics store and query backend. Phase 6 introduces Grafana Mimir for long-term storage while Prometheus continues handling scrape, rule evaluation, and short-term queries.
+
+```
+Servers (Alloy agent)
+  |
+  |-- metrics --> Prometheus --remote_write--> Mimir (long-term storage)
+  |                   |                         |
+  |                   +--> Alert Rules ----+    |
+  |                                        |    |
+  |                         Alertmanager <-+    |
+  |                           |                 |
+  |                      Teams / Email          |
+  |-- logs -----> Loki                          |
+  |                                             |
+Grafana (dashboards) <--- queries ---> Mimir + Loki
+```
+
+**Migration path**: The migration from Prometheus to Mimir is non-destructive. Prometheus continues running during the transition. The steps are:
+1. Deploy Mimir with object storage backend (S3, GCS, or Azure Blob)
+2. Add Mimir as a `remote_write` target in Prometheus config (dual-write)
+3. Let Mimir accumulate data for the desired retention window
+4. Switch Grafana's Prometheus datasource URL to point at Mimir query-frontend
+5. Validate dashboards and alerts work unchanged (Mimir is PromQL-compatible)
+6. Optionally reduce Prometheus local retention since Mimir holds long-term data
+
+**Rollback**: Point Grafana's datasource back at Prometheus. No data loss -- Prometheus retains its local TSDB during the migration.
+
+**When to migrate**: Prometheus local storage becomes a bottleneck when disk usage exceeds 50-75% regularly, retention beyond 30 days is needed for capacity planning or compliance, or HA is required for the metrics backend.
+
+## Access Control and RBAC Architecture
+
+Production deployments restrict dashboard visibility so each site's IT team sees only their own infrastructure while enterprise operations sees everything. Grafana provides this through folder-level permissions, Teams, and LDAP group synchronization.
+
+### Access Tiers
+
+| Tier | Who | What They See | Grafana Role |
+|------|-----|---------------|-------------|
+| **Enterprise NOC** | Central ops, platform team | All dashboards, all sites, admin settings | Org Admin or Editor |
+| **Site Ops** | Per-site IT team (e.g., dc-east ops) | Only their site's dashboards and alerts | Viewer (scoped to site folder) |
+| **Read-Only Stakeholders** | Management, compliance | Enterprise overview dashboards only | Viewer (scoped to overview folder) |
+
+### Folder Structure
+
+Grafana's folder permissions provide the access boundary. Each site gets its own dashboard folder, and Teams control who can see which folders.
+
+```
+Dashboards/
+  Enterprise/          -- NOC overview, fleet dashboards (enterprise ops only)
+  Site - DC East/      -- dc-east Windows, Linux, network dashboards
+  Site - DC West/      -- dc-west Windows, Linux, network dashboards
+  Site - Cloud US/     -- cloud-us dashboards
+  Shared/              -- Cross-site dashboards (log explorer, cert overview)
+```
+
+For each site folder, the default org-level Viewer permission is removed and access is granted only to the relevant Team. This ensures a dc-east engineer cannot see dc-west dashboards.
+
+### Team-to-Folder Permission Model
+
+| Grafana Team | Folder Access |
+|-------------|---------------|
+| `Enterprise Ops` | Editor on all folders |
+| `DC-East Ops` | Viewer on `Site - DC East/` and `Shared/` |
+| `DC-West Ops` | Viewer on `Site - DC West/` and `Shared/` |
+| `Cloud-US Ops` | Viewer on `Site - Cloud US/` and `Shared/` |
+| `Stakeholders` | Viewer on `Enterprise/` only |
+
+### LDAP/AD Group Synchronization
+
+For enterprise deployments, Grafana authenticates against Active Directory so user accounts do not need to be managed manually. AD security groups map to Grafana Teams automatically -- adding a user to an AD group grants them the corresponding Grafana Team membership and folder access on next login.
+
+**Identity platform**: Hybrid AD / Entra ID environments use on-premises domain controllers for LDAP bind. Grafana's LDAP integration authenticates against the on-prem AD (port 636 for LDAPS). Entra ID syncs users/groups to on-prem AD via Azure AD Connect, so the LDAP source remains the on-prem domain controller.
+
+**Recommended AD group structure:**
+
+| AD Security Group | Maps to Grafana Team | Dashboard Access |
+|-------------------|---------------------|-----------------|
+| `SG-Monitoring-Admins` | Enterprise Ops | All folders (Editor) |
+| `SG-Monitoring-DCEast` | DC-East Ops | Site - DC East, Shared (Viewer) |
+| `SG-Monitoring-DCWest` | DC-West Ops | Site - DC West, Shared (Viewer) |
+| `SG-Monitoring-CloudUS` | Cloud-US Ops | Site - Cloud US, Shared (Viewer) |
+| `SG-Monitoring-Readonly` | Stakeholders | Enterprise (Viewer) |
+
+**Onboarding workflow**: Adding a new site team member is a single AD group add. No Grafana configuration needed. Users are auto-provisioned on first login with the default Viewer role, and their Team membership (and thus folder access) is determined by AD group sync.
+
+### Template Variable Scoping
+
+The dashboards in this repo use `datacenter` as a template variable. When a site team member opens a dashboard, the variable dropdown only shows data their Alloy agents are sending (because their servers' `ALLOY_DATACENTER` label matches their site). Folder permissions add the access boundary; template variables scope the data within dashboards they can access.
+
 ## Design Decisions
 
 | Decision | Rationale | Date |
@@ -135,6 +239,8 @@ Monitoring_Dashboarding/
 | Two-tier Alloy deployment model | Tier 1: Alloy Agent installed per server (push-based, deployed via SCCM/Ansible). Tier 2: Alloy Site Gateway container per site (pull-based, polls SNMP/certs/hardware). Separates agent-based from gateway-based monitoring cleanly. | 2026-03-07 |
 | Embedded SNMP exporter over standalone | Alloy natively embeds snmp_exporter via `prometheus.exporter.snmp`, eliminating a separate container. Supports `config_merge_strategy = "merge"` to extend built-in modules (system, if_mib) with custom vendor profiles. | 2026-03-07 |
 | External Redfish exporter as sidecar | Alloy has no native Redfish component. A Redfish exporter sidecar runs alongside the site gateway container, accepting BMC targets via the multi-target URL parameter pattern (`__param_target`). | 2026-03-07 |
+| Folder-based RBAC over Grafana Organizations | Single Org with folder-level permissions is simpler to manage than multi-Org. Teams + folder permissions provide site isolation without duplicating datasources or dashboards. Multi-Org is only needed for true multi-tenant SaaS, not internal site separation. | 2026-03-07 |
+| LDAP group sync over manual Grafana user management | AD security groups map to Grafana Teams automatically. Onboarding is a single AD group add -- no Grafana admin action needed. Supports hybrid AD/Entra ID via on-prem LDAP bind. | 2026-03-07 |
 
 ## External Dependencies
 

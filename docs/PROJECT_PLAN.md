@@ -29,6 +29,7 @@
 | Phase 7F: IIS Dedicated Dashboard | Completed | Dashboard for existing IIS role metrics and access logs |
 | Phase 7G: Agentless Collection | Blocked | WinRM/SSH for edge cases -- pending internal use case review |
 | Phase 7H: Dashboard Hub Architecture | Completed | Enterprise NOC + per-site drill-down dashboards for location-centric monitoring |
+| Phase 8: Access Control and RBAC | Pending | Grafana folder provisioning, Team mapping, LDAP/AD group sync for hybrid AD/Entra ID |
 
 **Status Key**: Pending | In Progress | Completed | Blocked
 
@@ -1127,6 +1128,118 @@
 
 ---
 
+## Phase 8: Access Control and RBAC
+
+**Goal**: Implement Grafana folder-based RBAC with LDAP/AD group synchronization for tiered dashboard visibility. Each site's IT team sees only their own infrastructure. Enterprise operations sees everything. User onboarding is a single AD group add -- no Grafana admin action needed.
+
+**Status**: Pending
+
+**Prerequisite**: Phase C (LDAP authentication) in Helm chart, Phase 7H (dashboard folder structure exists)
+
+**Identity Platform**: Hybrid AD / Entra ID. Grafana authenticates via LDAP against on-premises domain controllers. Entra ID syncs users and groups to on-prem AD via Azure AD Connect. The LDAP source is always the on-prem DC.
+
+**Architecture Reference**: See [ARCHITECTURE.md](../ARCHITECTURE.md) for the access tier model, folder structure, team-to-folder permission model, and LDAP group sync design.
+
+### Tasks
+
+- [ ] 1. Create dashboard folder provisioning config -- `configs/grafana/provisioning/dashboards/`
+  - Restructure dashboard provisioning to use per-site folders instead of per-category folders
+  - Folder structure: `Enterprise/`, `Site - <name>/` (one per site), `Shared/`
+  - Existing dashboards redistributed: Enterprise NOC -> `Enterprise/`, site-specific dashboards -> `Site - <name>/`, cross-site dashboards (log explorer, cert overview) -> `Shared/`
+  - Folder names are templatized with placeholder site names (deployers replace per fork)
+  - Complexity: Medium
+  - Dependencies: None
+
+- [ ] 2. Create Grafana Team provisioning config -- `configs/grafana/provisioning/teams/`
+  - Provisioning YAML defining Grafana Teams: `Enterprise Ops`, per-site teams (e.g., `DC-East Ops`), `Stakeholders`
+  - Team names templatized with placeholder site names
+  - Evaluate whether Grafana provisioning API supports team-folder permission bindings (may require API calls or Terraform)
+  - Complexity: Medium
+  - Dependencies: Task 1
+
+- [ ] 3. Create folder permission provisioning
+  - Remove default org-level Viewer permission from site folders
+  - Grant `Enterprise Ops` team Editor on all folders
+  - Grant each site team Viewer on their site folder and `Shared/`
+  - Grant `Stakeholders` team Viewer on `Enterprise/` only
+  - Evaluate: Grafana provisioning vs Terraform vs API script for permission management
+  - Complexity: Medium
+  - Dependencies: Tasks 1, 2
+
+- [ ] 4. Create LDAP configuration -- `configs/grafana/ldap.toml`
+  - LDAP server connection (LDAPS on port 636)
+  - Bind DN for service account authentication
+  - User search base and filter (`sAMAccountName` for AD, `uid` for standard LDAP)
+  - Group search base and filter for AD security groups
+  - Group-to-Team mapping: `SG-Monitoring-Admins` -> `Enterprise Ops`, `SG-Monitoring-<Site>` -> `<Site> Ops`, etc.
+  - Auto-provisioning: create Grafana user on first LDAP login
+  - Default org role for new users: `Viewer`
+  - Complexity: Medium
+  - Dependencies: None (configuration, but tested with Tasks 1-3)
+
+- [ ] 5. Update Grafana configuration for LDAP auth -- `configs/grafana/grafana.ini` or env vars
+  - Enable LDAP authentication (`auth.ldap.enabled = true`)
+  - Set LDAP config file path (`auth.ldap.config_file = /etc/grafana/ldap.toml`)
+  - Configure auto-provisioning behavior (sync interval, allow sign-up)
+  - Disable basic auth if LDAP is the sole auth method (or keep as fallback)
+  - Complexity: Simple
+  - Dependencies: Task 4
+
+- [ ] 6. Update Helm chart for RBAC support
+  - Add `ldap.toml` to Grafana ConfigMap or Secret (contains bind password)
+  - Add `grafana.ini` overrides for LDAP auth settings
+  - Add values.yaml fields for LDAP connection, group mapping, and team provisioning
+  - Add folder permission provisioning to Grafana init container or startup script
+  - Complexity: Medium
+  - Dependencies: Tasks 1-5
+
+- [ ] 7. Create RBAC testing and validation script -- `scripts/validate_rbac.py`
+  - Validate folder structure matches expected site list
+  - Validate Team provisioning against expected AD group mapping
+  - Validate folder permissions (each site folder accessible only by correct team)
+  - Test mode: connects to running Grafana instance, queries API, reports compliance
+  - Dry-run mode: validates config files without a running instance
+  - Complexity: Medium
+  - Dependencies: Tasks 1-3
+
+- [ ] 8. Document RBAC setup and operations -- `docs/RBAC_GUIDE.md`
+  - Prerequisites: AD security groups created, LDAP service account, Grafana LDAP config
+  - Step-by-step: adding a new site (folder + team + AD group + permissions)
+  - Step-by-step: onboarding a new team member (AD group add only)
+  - Step-by-step: offboarding (AD group remove -- Grafana session revoked on next sync)
+  - Troubleshooting: LDAP bind failures, group sync delays, permission issues
+  - AD group naming convention: `SG-Monitoring-<Site>` or organization-specific prefix
+  - Hybrid AD / Entra ID specifics: which DC to bind against, Azure AD Connect sync timing
+  - Complexity: Medium
+  - Dependencies: Tasks 1-6
+
+### Architecture Notes
+
+- **Folder-based isolation over Grafana Organizations**: Single Org with folder-level permissions is simpler than multi-Org. Multi-Org would require duplicating datasources and dashboards per org. Folder permissions achieve site isolation without duplication.
+- **LDAP over Entra ID OAuth**: Hybrid AD/Entra ID environments have both identity sources. LDAP is chosen because it provides group sync natively (AD security groups -> Grafana Teams). Entra ID OAuth would require Grafana Enterprise for team sync via Azure AD groups. LDAP against on-prem DC is available with Grafana OSS.
+- **Auto-provisioning**: New users are created in Grafana on first LDAP login with the default Viewer role. Team membership is determined by AD group sync. No manual Grafana account creation needed.
+- **Template variable scoping**: Dashboard template variables filter data by `datacenter` label. Even if a user could somehow access a dashboard outside their folder, they would only see data for sites whose `ALLOY_DATACENTER` labels match their site. Folder permissions are the primary access control; label scoping is a secondary data boundary.
+
+### Risks
+
+- **Grafana provisioning limitations**: Grafana's file-based provisioning may not support team-folder permission bindings. Mitigation: evaluate API-based provisioning (Terraform, init container script) as alternative.
+- **LDAP group sync latency**: AD group changes may take 5-15 minutes to sync to Grafana. Mitigation: document expected sync interval, provide manual sync API endpoint.
+- **Multi-domain complexity**: Hybrid AD/Entra ID with multiple on-prem domains may require multiple LDAP server entries. Mitigation: document multi-domain configuration, test against primary domain first.
+- **Grafana version dependency**: LDAP team sync behavior varies across Grafana versions. Mitigation: document minimum Grafana version, test against the version deployed.
+
+### Human Actions Required
+
+- [ ] Create AD security groups following the `SG-Monitoring-<Site>` convention (or provide naming convention)
+- [ ] Provide list of sites/datacenters that need separate dashboard visibility
+- [ ] Create an LDAP service account (read-only, bind access to user and group OUs)
+- [ ] Provide LDAP server hostname (on-prem DC), port, bind DN, search bases
+- [ ] Identify IT team leads at each site (who approves access requests)
+- [ ] Decide whether read-only stakeholder access is needed (management dashboards)
+- [ ] Decide whether any sites share IT staff (impacts Team membership design)
+- [ ] Designate Grafana admin account ownership (who holds the admin password long-term)
+
+---
+
 ## Human Actions Checklist
 
 > Consolidated list of all actions requiring human intervention.
@@ -1209,6 +1322,17 @@
 - [ ] Confirm which sites should appear in the NOC grid (all sites, or only production?)
 - [ ] Provide feedback on Site Overview row ordering and priority
 
+### Access Control and RBAC (Phase 8)
+
+- [ ] Create AD security groups following `SG-Monitoring-<Site>` convention
+- [ ] Provide list of sites needing separate dashboard visibility
+- [ ] Create LDAP service account (read-only, bind access to user and group OUs)
+- [ ] Provide LDAP server hostname, port, bind DN, search bases
+- [ ] Identify IT team leads at each site
+- [ ] Decide on stakeholder read-only access (management dashboards)
+- [ ] Decide whether any sites share IT staff (impacts Team membership)
+- [ ] Designate Grafana admin account ownership
+
 ### Post-Completion
 
 - [ ] Integrate config validation into CI/CD pipeline
@@ -1264,5 +1388,5 @@ All monitoring at each site uses two distinct Alloy deployment patterns:
 
 ---
 
-*Document Version: 1.7*
-*Last Updated: 2026-03-07*
+*Document Version: 1.8*
+*Last Updated: 2026-03-08*
