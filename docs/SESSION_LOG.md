@@ -66,3 +66,58 @@ This file maintains continuity across work sessions. Each session summary is app
 - All changes this session are uncommitted. There are 15 modified files, 2 renamed (compose files), and 4 new untracked files/dirs (QUICKSTART.md, dc.sh, dc.ps1, deploy/helm/).
 - Python path on this machine: `C:/Users/etamez/AppData/Local/Programs/Python/Python314/python.exe`
 - Commit method: `C:/Users/etamez/AppData/Local/Programs/Python/Python314/python.exe skills/git_smart_commit.py commit-and-push "message"`
+
+---
+
+## Session: 2026-03-08 10:48
+
+### Completed
+
+**Phase 3.1: Alert Routing Enhancement** (committed as `f402f7a` in prior session portion)
+- Implemented site-based alert routing with per-datacenter email distribution lists
+- 6 per-site email receivers across 3 datacenters (dc-east, dc-west, cloud-us)
+- SMTP auth configuration, enhanced Teams template, Helm/Grafana sync
+- All 8 Phase 3.1 tasks marked complete
+
+**Three-File Document Restructuring** (committed as `9d8e98a`)
+- Created `docs/DEPLOYMENT_VALUES.md` (496 lines) -- pure key-value deployment reference with 12 config sections, Quick-Start Checklist, Environment Variable Reference, Secrets Management
+- Expanded `ARCHITECTURE.md` (+106 lines) -- added Label Taxonomy section, Data Flow Future State (Mimir) with ASCII diagram and 6-step migration path, full Access Control and RBAC Architecture section (Access Tiers, Folder Structure, Team-to-Folder Permissions, LDAP/AD Group Sync for hybrid AD/Entra ID, Template Variable Scoping), two new Design Decisions
+- Expanded `docs/PROJECT_PLAN.md` (+128 lines, bumped to v1.8) -- added Phase 8: Access Control and RBAC with 8 tasks, architecture notes, risks, and human actions; added Phase 8 items to consolidated Human Actions Checklist
+
+**Document Purpose Separation Principle Established**
+- `DEPLOYMENT_VALUES.md` = working/instruction document (config files + key=value pairs deployers use)
+- `ARCHITECTURE.md` = informational document (component descriptions, data flow, RBAC architecture, design decisions)
+- `PROJECT_PLAN.md` = planning/tracking document (phase definitions, task checklists, human actions, status)
+
+### In Progress
+- None. All session tasks complete and committed.
+
+### Blockers
+- **Phase 8 RBAC implementation** requires 8 human actions before config work can begin:
+  - Create AD security groups (SG-Monitoring-Admins, SG-Monitoring-DCEast, etc.)
+  - Obtain LDAP bind service account credentials
+  - Confirm LDAP server address and search base DN
+  - Map existing AD groups to Grafana Teams
+  - Decide site-to-folder mapping per datacenter
+  - Confirm Grafana Enterprise vs OSS (affects provisioning API)
+  - Decide whether any sites share IT staff (impacts Team membership)
+  - Test LDAP bind connectivity from Grafana pod
+
+### Decisions
+- **RBAC model**: Folder-level permissions + Teams over Grafana multi-Organization. Single Org with folder isolation is simpler and avoids duplicating datasources/dashboards. Multi-Org only needed for true multi-tenant SaaS.
+- **LDAP over OAuth/SAML for initial auth**: Hybrid AD/Entra ID environment uses on-prem domain controllers for LDAP bind (port 636 LDAPS). Entra ID syncs via Azure AD Connect. LDAP is simpler and works without Grafana Enterprise.
+- **Document separation**: User corrected scope creep in DEPLOYMENT_VALUES.md. Informational content (Mimir architecture, RBAC architecture, label taxonomy) belongs in ARCHITECTURE.md, not in deployment reference. Deployment guide should be pure key=value tables that deployers use during configuration.
+- **RBAC config placement in DEPLOYMENT_VALUES.md**: RBAC-specific LDAP values consolidated into Section 11 ("Ingress, Authentication, and RBAC") with three sub-tables (Ingress Phase B, LDAP Auth Phase C, RBAC Group Sync Phase 8) rather than a standalone section.
+
+### Next Session
+1. **Phase 5.7 or Phase 7C/7D work** -- check PROJECT_PLAN.md for next priority (Phase 5.7 fleet tagging is In Progress, Phase 7D Lansweeper is Pending)
+2. **Phase 8 RBAC implementation** -- blocked on human actions (AD group creation, LDAP credentials); can begin config scaffolding once prerequisites are met
+3. **Helm chart validation** -- still pending from prior session (need `helm lint` on a machine with Helm CLI)
+
+### Context
+- Two commits this session: `f402f7a` (Phase 3.1 alert routing) and `9d8e98a` (doc restructuring + Phase 8 planning)
+- PROJECT_PLAN.md is at version 1.8 (2026-03-08) with Phase 8 added as Pending
+- ARCHITECTURE.md now contains the authoritative RBAC architecture documentation (Access Tiers, Folder Structure, Team-to-Folder Permissions, LDAP/AD integration, Template Variable Scoping)
+- DEPLOYMENT_VALUES.md has cross-references to ARCHITECTURE.md for readers who want explanations beyond the key-value tables
+- Python path: `C:/Users/etamez/AppData/Local/Programs/Python/Python314/python.exe`
+- Commit method: `python.exe skills/git_smart_commit.py commit-and-push "message"`
