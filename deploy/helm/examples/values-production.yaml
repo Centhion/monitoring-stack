@@ -28,9 +28,10 @@ prometheus:
   # 100 servers x 2000 series x 2 bytes x (86400/30) x 30 days = ~35GB
   persistence:
     size: 50Gi
-    # storageClass: "managed-premium"  # Uncomment for Azure AKS
-    # storageClass: "gp3"             # Uncomment for AWS EKS
-    # storageClass: "pd-ssd"          # Uncomment for GCP GKE
+    # storageClass: "nutanix-volume"   # Nutanix NKP (Nutanix CSI driver)
+    # storageClass: "managed-premium"  # Azure AKS
+    # storageClass: "gp3"             # AWS EKS
+    # storageClass: "pd-ssd"          # GCP GKE
 
   # Production resource allocation (tuned for ~100k active series)
   # Monitor actual usage and adjust. Prometheus memory scales linearly

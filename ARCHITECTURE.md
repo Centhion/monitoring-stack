@@ -92,7 +92,7 @@ Monitoring_Dashboarding/
 |   +-- network/                # Network infrastructure dashboards (Phase 7A)
 |   +-- hardware/               # Hardware health dashboards (Phase 7B)
 |   +-- certs/                  # Certificate monitoring dashboards (Phase 7C)
-|   +-- assets/                 # Asset intelligence dashboards (Phase 7D)
+|   +-- assets/                 # Reserved for future asset dashboards
 +-- alerts/                      # Alert rule definitions
 |   +-- prometheus/             # Prometheus alerting rules (YAML)
 |   +-- grafana/                # Grafana-managed alert rules (JSON)
@@ -241,6 +241,7 @@ The dashboards in this repo use `datacenter` as a template variable. When a site
 | External Redfish exporter as sidecar | Alloy has no native Redfish component. A Redfish exporter sidecar runs alongside the site gateway container, accepting BMC targets via the multi-target URL parameter pattern (`__param_target`). | 2026-03-07 |
 | Folder-based RBAC over Grafana Organizations | Single Org with folder-level permissions is simpler to manage than multi-Org. Teams + folder permissions provide site isolation without duplicating datasources or dashboards. Multi-Org is only needed for true multi-tenant SaaS, not internal site separation. | 2026-03-07 |
 | LDAP group sync over manual Grafana user management | AD security groups map to Grafana Teams automatically. Onboarding is a single AD group add -- no Grafana admin action needed. Supports hybrid AD/Entra ID via on-prem LDAP bind. | 2026-03-07 |
+| Nutanix NKP as Kubernetes platform | Production Kubernetes runs on Nutanix Kubernetes Platform (NKP) in datacenter infrastructure. Persistent volumes use Nutanix CSI driver with Nutanix Volumes storage class. Helm chart storageClass values should reference the Nutanix provisioner. | 2026-03-09 |
 
 ## External Dependencies
 
@@ -263,4 +264,4 @@ When scaling beyond Phase 1:
 | Component | Purpose | Trigger |
 |-----------|---------|---------|
 | Grafana Mimir | Replaces Prometheus for long-term storage | Need >30 days retention or HA |
-| Object Storage (S3/Azure Blob) | Mimir backend storage | Required by Mimir |
+| Object Storage (S3/Azure Blob/Nutanix Objects) | Mimir backend storage | Required by Mimir |

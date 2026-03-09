@@ -121,3 +121,62 @@ This file maintains continuity across work sessions. Each session summary is app
 - DEPLOYMENT_VALUES.md has cross-references to ARCHITECTURE.md for readers who want explanations beyond the key-value tables
 - Python path: `C:/Users/etamez/AppData/Local/Programs/Python/Python314/python.exe`
 - Commit method: `python.exe skills/git_smart_commit.py commit-and-push "message"`
+
+---
+
+## Session: 2026-03-09 (macOS)
+
+### Completed
+
+**Mac development environment setup**
+- Downloaded repo zip to macOS (folder: `Monitoring_Dashboarding-master`). The `-master` suffix from GitHub's zip naming is cosmetic and does not affect anything.
+- Initialized git, connected remote (`https://github.com/Centhion/Monitoring_Dashboarding.git`), fetched history, aligned local branch with `origin/master`. Full commit history intact, clean working tree, upstream tracking set.
+
+**Project scope review and cleanup**
+- Conducted honest analysis of project scope, bloat, and deliverability. Conclusion: project is right-sized for its deployment requirements. The only true bloat identified was Lansweeper integration (Phase 7D).
+
+**Phase 7D: Lansweeper Integration -- DROPPED**
+- Removed entire Phase 7D from PROJECT_PLAN.md (6 tasks, 3 human actions, risks section, architecture description)
+- Cleaned all Lansweeper cross-references from Phase 7C (cert monitoring architecture decision, cert data source options, risk mitigations)
+- Cleaned Lansweeper references from Phase 7H (dashboard hub architecture notes, NOC overlap note)
+- Removed Lansweeper dashboard provider from `configs/grafana/dashboards/dashboards.yml`
+- Updated `ARCHITECTURE.md` directory structure (neutralized `assets/` description)
+- Rationale: Asset inventory is handled entirely by Lansweeper. The boundary between infrastructure health monitoring (this stack) and asset discovery (Lansweeper) is clear and intentional.
+
+**Nutanix NKP platform documentation**
+- Added Nutanix NKP as the Kubernetes platform across all relevant docs:
+  - `ARCHITECTURE.md`: New design decision documenting NKP, Nutanix CSI driver, Nutanix Volumes storage class
+  - `ARCHITECTURE.md`: Nutanix Objects added as Mimir object storage candidate
+  - `deploy/helm/examples/values-production.yaml`: `nutanix-volume` storage class option added alongside cloud providers
+  - `deploy/helm/monitoring-stack/values.yaml`: Nutanix CSI note on storageClass field
+  - `docs/DEPLOYMENT_VALUES.md`: Mimir object storage references updated for Nutanix Objects (S3-compatible)
+  - `docs/PROJECT_PLAN.md`: Platform notes updated with NKP, CSI driver, Nutanix Objects
+
+**PROJECT_PLAN.md bumped to v1.9 (2026-03-09)**
+
+### In Progress
+- 6 modified files are uncommitted. Need to commit and push before ending session or switching to Windows.
+
+### Blockers
+- None new. Phase 8 RBAC still blocked on human actions (unchanged from prior session).
+
+### Decisions
+- **Lansweeper dropped**: Asset inventory stays in Lansweeper. No monitoring stack integration. This removes 6 tasks, 3 human actions, and a custom Python exporter from scope.
+- **Nutanix NKP is the Kubernetes platform**: Production K8s runs on Nutanix Kubernetes Platform. Persistent volumes use Nutanix CSI driver. Mimir (Phase 6) can use Nutanix Objects as S3-compatible backend.
+- **Cross-platform dev workflow**: Mac and Windows both work against the same GitHub remote. Standard git pull/push to sync. Folder name difference is irrelevant.
+
+### Next Session
+1. **Commit and push** the 6 modified files from this session
+2. **Phase 5.7** -- Fleet tagging and Ansible deployment tooling (next code-ready work, 12 tasks)
+3. **Phase 7E** -- Cloud infrastructure monitoring stubs (if cloud requirements are clarified)
+4. **Phase 8 RBAC** -- begin config scaffolding when human actions are completed
+5. **Helm validation** -- still pending (`helm lint` on a machine with Helm CLI)
+
+### Context
+- Development is now on macOS (MacBook). Python 3.14.1, Git 2.52.0 via Homebrew.
+- Working directory: `/Users/et/Development/Monitoring_Dashboarding-master`
+- Commit method on Mac: `python3 skills/git_smart_commit.py commit-and-push "message"` (or standard git)
+- Windows commit method remains: `python.exe skills/git_smart_commit.py commit-and-push "message"`
+- PROJECT_PLAN.md is at version 1.9 with Phase 7D marked Dropped
+- Remaining Phase 7 execution order: 7E (cloud, pending) -> 7G (agentless, blocked)
+- Total pending tasks reduced from 169 to ~157 after Lansweeper removal

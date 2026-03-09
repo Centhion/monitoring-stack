@@ -24,7 +24,7 @@
 | Phase 7A: SNMP Network Device Monitoring | Completed | Gateway config, recording rules, alerts, dashboard. Traps/Helm/docs deferred. |
 | Phase 7B: Hardware/HCI Health Monitoring | Completed | Gateway config, recording rules, alerts, dashboard. Helm/docs deferred. |
 | Phase 7C: SSL Certificate Monitoring | Completed | Blackbox probing for internal PKI + public DigiCert certs |
-| Phase 7D: Lansweeper Integration | Pending | Custom Python exporter for asset intelligence via GraphQL API |
+| Phase 7D: Lansweeper Integration | Dropped | Out of scope -- asset inventory stays in Lansweeper, no monitoring stack integration needed |
 | Phase 7E: Cloud Infrastructure Monitoring | Pending | Stub configs for AWS CloudWatch / Azure Monitor (when ready) |
 | Phase 7F: IIS Dedicated Dashboard | Completed | Dashboard for existing IIS role metrics and access logs |
 | Phase 7G: Agentless Collection | Blocked | WinRM/SSH for edge cases -- pending internal use case review |
@@ -737,19 +737,17 @@
 
 **Status**: Completed (Tasks 1-6 delivered; Tasks 7-9 deferred to deployment integration)
 
-**Architecture Decision**: Blackbox probing (native Alloy component) selected as primary approach. Lansweeper API as supplementary discovery source (Phase 7D). DigiCert CertCentral API deferred (blackbox covers public certs via HTTPS probing).
+**Architecture Decision**: Blackbox probing (native Alloy component) selected as primary approach. DigiCert CertCentral API deferred (blackbox covers public certs via HTTPS probing).
 
 ### Tasks
 
 - [x] 1. Research certificate data sources and recommend approach
   - Option A: Blackbox exporter (native Alloy) -- probes HTTPS/TLS endpoints, reports `probe_ssl_earliest_cert_expiry`
-  - Option B: Lansweeper API (if it inventories cert data with expiry) -- depends on Phase 7D Task 1 findings
-  - Option C: x509-certificate-exporter (standalone) -- scans cert files on disk for non-HTTP services
-  - Option D: DigiCert CertCentral API -- direct public cert inventory for DigiCert-managed certs
+  - Option B: x509-certificate-exporter (standalone) -- scans cert files on disk for non-HTTP services
+  - Option C: DigiCert CertCentral API -- direct public cert inventory for DigiCert-managed certs
   - Evaluate accuracy, coverage, and maintenance burden of each
   - Deliver written recommendation with trade-offs
   - Complexity: Medium (research)
-  - Dependencies: Phase 7D Task 1 findings (Lansweeper API capabilities)
 
 - [x] 2. Create certificate endpoint inventory -- `configs/alloy/certs/endpoints.yml`
   - YAML list of HTTPS/TLS endpoints to probe (internal + public)
@@ -813,7 +811,7 @@
 - Endpoint reachability: monitoring stack must have network access to all HTTPS endpoints. Mitigation: document firewall requirements.
 - Internal PKI trust: blackbox prober needs to trust internal CA root/intermediate certs. Mitigation: CA bundle mount in Alloy container.
 - Cert chain reporting: blackbox reports earliest expiry in chain (could be intermediate, not leaf). Mitigation: document behavior, consider x509-exporter supplement for file-based validation.
-- Inventory completeness: missing endpoints means missing certs. Mitigation: Lansweeper integration (Phase 7D) as supplementary discovery source.
+- Inventory completeness: missing endpoints means missing certs. Mitigation: maintain endpoint inventory in `configs/alloy/certs/endpoints.yml` and review periodically.
 
 ### Human Actions Required
 
@@ -826,72 +824,9 @@
 
 ## Phase 7D: Lansweeper Integration
 
-**Goal**: Bridge Lansweeper asset intelligence into the monitoring stack via a custom Python exporter querying the Lansweeper GraphQL API. Potentially serves as supplementary data source for certificate monitoring (Phase 7C).
+**Status**: Dropped
 
-**Status**: Pending -- requires Lansweeper API access for research
-
-**Architecture**: Custom Python service using `prometheus_client` library exposes a `/metrics` HTTP endpoint. Alloy scrapes it like any other exporter. Queries Lansweeper GraphQL API on a configurable interval with response caching.
-
-### Tasks
-
-- [ ] 1. Research Lansweeper GraphQL API capabilities
-  - Document available data: assets, hardware inventory, software, warranties, certificates
-  - Test API access with a Personal Access Token (PAT)
-  - Identify exact GraphQL fields for certificate data (expiry dates, issuers, subjects)
-  - Determine rate limits, pagination behavior, and query cost
-  - Evaluate whether Lansweeper cert data is accurate/complete enough for Phase 7C
-  - Deliver findings document
-  - Complexity: Medium (research)
-  - Dependencies: Lansweeper PAT from IT team
-
-- [ ] 2. Create Lansweeper Prometheus exporter -- `scripts/lansweeper_exporter.py`
-  - Python service using `prometheus_client` library
-  - Queries Lansweeper GraphQL API on configurable interval (default: 5 minutes)
-  - Response caching to respect rate limits
-  - Exposes gauges: asset counts by type/site/OS, warranty expiry, certificate expiry (if available), software compliance
-  - HTTP `/metrics` endpoint for Alloy/Prometheus scraping
-  - Configurable via environment variables (API key, site IDs, scrape interval, endpoint URL)
-  - Complexity: Complex
-  - Dependencies: Task 1
-
-- [ ] 3. Create Alloy scrape config for Lansweeper exporter
-  - `prometheus.scrape` targeting the exporter endpoint
-  - Standard label injection
-  - Complexity: Simple
-  - Dependencies: Task 2
-
-- [ ] 4. Create Lansweeper Asset dashboard -- `dashboards/assets/asset_overview.json`
-  - Asset inventory by site, OS, device type
-  - Warranty expiration tracking and timeline
-  - Certificate data panels (if Lansweeper provides it -- may feed into Phase 7C dashboard)
-  - Software compliance overview
-  - Complexity: Medium
-  - Dependencies: Task 2
-
-- [ ] 5. Add Lansweeper exporter to Docker Compose and Helm chart
-  - Container running the Python exporter
-  - Secret for API key
-  - ConfigMap for exporter settings
-  - Complexity: Simple
-  - Dependencies: Task 2
-
-- [ ] 6. Documentation -- `docs/LANSWEEPER_INTEGRATION.md`
-  - API setup and PAT creation in Lansweeper admin console
-  - Available metrics and their GraphQL sources
-  - Extending with additional GraphQL queries
-  - Complexity: Simple
-
-### Risks
-
-- API access: Lansweeper may have rate limits or restricted field access depending on license tier. Mitigation: research task first, cache-heavy exporter design.
-- Cert data availability: Lansweeper may not expose certificate details via API (new implementation being rolled out). Mitigation: Phase 7C blackbox probing is the primary cert source; Lansweeper is supplementary.
-- API stability: Lansweeper GraphQL schema may change between versions. Mitigation: version-pin queries, add schema validation, document API version tested against.
-
-### Human Actions Required
-
-- [ ] Create Lansweeper API Personal Access Token with read permissions
-- [ ] Confirm which Lansweeper sites/scopes to query
-- [ ] Provide Lansweeper API endpoint URL (cloud: api.lansweeper.com or on-prem)
+**Reason**: Asset inventory is handled entirely by Lansweeper. No monitoring stack integration needed -- the boundary between infrastructure health monitoring (this stack) and asset discovery (Lansweeper) is clear and intentional.
 
 ---
 
@@ -1036,7 +971,7 @@
 
 **Audience**: Both central NOC team (multi-site comparison, problem identification) and resort IT staff (single-site deep visibility, troubleshooting).
 
-**Scope**: Servers and actively monitored infrastructure only. Asset/endpoint inventory is handled by Lansweeper separately -- no overlap.
+**Scope**: Servers and actively monitored infrastructure only. Asset/endpoint inventory is out of scope (handled externally).
 
 **Design Principle**: These dashboards are additive -- they consume metrics from all other phases. Each Phase 7 sub-phase adds a new row/section to the Site Overview and a new column to the Enterprise NOC grid. Ship the framework with server + IIS data now; SNMP, hardware, and cert sections land as those phases complete.
 
@@ -1105,19 +1040,18 @@
   - 7A: Network rows populated with SNMP recording rules, NOC site table with drill-down
   - 7B: Hardware rows populated with Redfish metrics, NOC site table with drill-down
   - 7C: Certificate rows populated with blackbox metrics (completed previously)
-  - Remaining: only Phase 7D+ sub-phases (if dashboard integration needed)
+  - Remaining: only Phase 7E+ sub-phases (if dashboard integration needed)
 
 ### Architecture Notes
 
 - **Link inheritance**: Grafana supports passing template variables via URL parameters. The Enterprise NOC links to Site Overview with `?var-datacenter=SITE-A`. Site Overview links to detailed dashboards with `?var-datacenter=$datacenter&var-environment=$environment`. This creates seamless drill-down without requiring users to re-select filters.
-- **Placeholder rows**: Network (7A), Hardware (7B), and Certificate (7C) rows are now populated with real queries and drill-down links. Future Phase 7 sub-phases (7D+) follow the same pattern if dashboard integration is needed.
+- **Placeholder rows**: Network (7A), Hardware (7B), and Certificate (7C) rows are now populated with real queries and drill-down links. Future Phase 7 sub-phases (7E+) follow the same pattern if dashboard integration is needed.
 - **Dashboard UIDs**: `enterprise-noc`, `site-overview`. All dashboards reference these UIDs in their link definitions for stability across Grafana upgrades.
-- **No Lansweeper overlap**: Asset inventory panels are intentionally excluded. Lansweeper handles endpoint/asset discovery. This stack handles infrastructure health monitoring. The boundary is clear: if we actively poll/scrape it, it appears here. If Lansweeper discovers it passively, it stays in Lansweeper.
 
 ### Risks
 
 - Dashboard complexity: the Enterprise NOC grid queries many recording rules simultaneously. Mitigation: all queries use pre-computed recording rules (not raw metrics), keeping dashboard load time fast.
-- Placeholder row maintenance: Network, Hardware, and Certificate placeholder rows are now populated. Only future Phase 7 sub-phases (7D+) may need dashboard integration.
+- Placeholder row maintenance: Network, Hardware, and Certificate placeholder rows are now populated. Only future Phase 7 sub-phases (7E+) may need dashboard integration.
 - Template variable cascade: passing variables between dashboards requires consistent naming (`datacenter` everywhere, not `site` in some places). Mitigation: existing dashboards already use a consistent taxonomy.
 
 ### Human Actions Required
@@ -1298,12 +1232,6 @@
 - [ ] Confirm DigiCert CertCentral API access availability (if using direct API)
 - [ ] Review alert thresholds (30d warning, 7d critical defaults)
 
-### Lansweeper Integration (Phase 7D)
-
-- [ ] Create Lansweeper API Personal Access Token with read permissions
-- [ ] Confirm which Lansweeper sites/scopes to query
-- [ ] Provide Lansweeper API endpoint URL (cloud or on-prem)
-
 ### Cloud Monitoring (Phase 7E)
 
 - [ ] Identify which cloud provider(s) are in use (when ready)
@@ -1361,7 +1289,7 @@ All monitoring at each site uses two distinct Alloy deployment patterns:
   - Certificate probing (HTTPS + TCP/TLS endpoints) via `prometheus.exporter.blackbox`
   - Hardware health (iLO, iDRAC BMC interfaces) via Redfish API exporter
 - Requires management VLAN network access to reach device interfaces
-- Can run on any server at the site with Docker -- Lansweeper server is a candidate
+- Can run on any server at the site with Docker
 - Config: `configs/alloy/gateway/` (unified gateway config)
 - Transitions to a K8s pod with zero config changes when NKP arrives
 
@@ -1378,15 +1306,17 @@ All monitoring at each site uses two distinct Alloy deployment patterns:
 - All configs designed to work with both Prometheus (Phase 1) and Mimir (Phase 2) via remote_write
 - Teams notification via Alertmanager webhook -- no MCP or external tooling required
 - Python 3.10+ required for validation scripts
-- Phase 7 extends monitoring beyond agent-based OS collection to SNMP, hardware, certificates, asset intelligence, and cloud
+- Phase 7 extends monitoring beyond agent-based OS collection to SNMP, hardware, certificates, and cloud
 - Network fleet: Cisco switches, Palo Alto firewalls, Ubiquiti APs/switches
 - HCI fleet: HPE SimpliVity (iLO) + Dell (iDRAC), firmware kept current
 - Certificate monitoring covers both internal PKI and public DigiCert certificates
-- Lansweeper GraphQL API integration pending -- new enterprise rollout, API capabilities require research
-- Phase 7 execution order: 7F (done) -> 7H (done) -> 7C (done) -> 7A (done) -> 7B (done) -> 7D (Lansweeper) -> 7E (cloud) -> 7G (agentless, blocked)
+- Phase 7 execution order: 7F (done) -> 7H (done) -> 7C (done) -> 7A (done) -> 7B (done) -> 7D (dropped) -> 7E (cloud) -> 7G (agentless, blocked)
 - Phase 7H (dashboard hub) ships right after 7F with server + IIS data; grows incrementally as each sub-phase adds its monitoring domain
+- Kubernetes platform: Nutanix NKP (Nutanix Kubernetes Platform) in datacenter infrastructure
+- Persistent storage: Nutanix CSI driver with Nutanix Volumes storage class for all PVCs (Prometheus, Loki, Grafana)
+- Mimir object storage (Phase 6): Nutanix Objects (S3-compatible) is a candidate backend
 
 ---
 
-*Document Version: 1.8*
-*Last Updated: 2026-03-08*
+*Document Version: 1.9*
+*Last Updated: 2026-03-09*

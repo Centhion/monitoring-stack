@@ -319,8 +319,8 @@ No action needed until you are ready for these features.
 | Setting | Placeholder | Replace With |
 |---------|-------------|--------------|
 | Mimir URL | `MIMIR_URL` in `.env.example` | Mimir distributor endpoint (e.g., `http://mimir:9009`) |
-| Object storage bucket | `MIMIR_OBJECT_STORAGE_BUCKET` | S3/GCS bucket name for metric chunks |
-| Object storage endpoint | `MIMIR_OBJECT_STORAGE_ENDPOINT` | S3/GCS endpoint URL |
+| Object storage bucket | `MIMIR_OBJECT_STORAGE_BUCKET` | S3-compatible bucket name for metric chunks (Nutanix Objects or cloud S3/GCS) |
+| Object storage endpoint | `MIMIR_OBJECT_STORAGE_ENDPOINT` | S3-compatible endpoint URL (Nutanix Objects endpoint or cloud S3/GCS) |
 | Grafana datasource | Prometheus URL in `datasources.yml` | Change to Mimir query-frontend URL |
 | Prometheus remote_write | `remote_write` section in `prometheus.yml` | Add Mimir endpoint as a remote_write target |
 

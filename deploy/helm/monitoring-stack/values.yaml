@@ -68,6 +68,7 @@ prometheus:
     # -- Enable persistent storage (strongly recommended)
     enabled: true
     # -- Storage class. Leave empty for cluster default.
+    # For Nutanix NKP: use the Nutanix CSI storage class (e.g., "nutanix-volume")
     storageClass: ""
     # -- PVC size. Production recommendation: 50Gi-100Gi depending on fleet size
     size: 10Gi

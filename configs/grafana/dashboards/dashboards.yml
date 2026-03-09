@@ -105,17 +105,3 @@ providers:
       foldersFromFilesStructure: false
     folder: "Certificate Monitoring"
 
-  # ---------------------------------------------------------------------------
-  # Asset Intelligence Dashboards (Phase 7D)
-  # Lansweeper API integration: asset inventory, warranties, software.
-  # ---------------------------------------------------------------------------
-  - name: "Assets"
-    orgId: 1
-    type: file
-    disableDeletion: false
-    updateIntervalSeconds: 30
-    allowUiUpdates: false
-    options:
-      path: /var/lib/grafana/dashboards/assets
-      foldersFromFilesStructure: false
-    folder: "Asset Intelligence"
