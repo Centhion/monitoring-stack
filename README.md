@@ -143,6 +143,3 @@ All dashboards include a cross-navigation link bar. Template variables (`environ
 - Run tests: `python -m pytest tests/test_validators.py -v`
 - See `docs/VALIDATION_TOOLING.md` for validator details and CI integration
 
-## License
-
-(Add your license here)
