@@ -17,6 +17,18 @@ Provide centralized infrastructure monitoring, log aggregation, alerting, and da
 | Visualization | Grafana | Dashboards, exploration, alert management UI |
 | Notifications | Microsoft Teams (webhook) | Alert delivery to operations team |
 
+## Modular by Design
+
+This repository is a comprehensive reference stack, not an all-or-nothing deployment. Every component is optional and can be enabled, disabled, or swapped to match your environment:
+
+- **Using Grafana Cloud?** Drop the local Grafana, Prometheus, and Alertmanager configs — keep only the Alloy agent configs and dashboards.
+- **Don't need RBAC/LDAP?** Remove `configs/grafana/ldap/` and the RBAC scripts — Grafana works fine with built-in auth.
+- **Scaling beyond Prometheus?** The stack includes a Mimir migration path for long-term, horizontally-scalable metrics storage.
+- **No network devices?** Skip the SNMP and Redfish configs entirely — the core server monitoring stands on its own.
+- **Windows-only or Linux-only?** Pull just the OS-specific Alloy configs and dashboards you need.
+
+Treat this as a parts catalog: fork it, strip what you don't need, and customize what you keep.
+
 ## Quick Start
 
 ```bash
