@@ -180,3 +180,82 @@ This file maintains continuity across work sessions. Each session summary is app
 - PROJECT_PLAN.md is at version 1.9 with Phase 7D marked Dropped
 - Remaining Phase 7 execution order: 7E (cloud, pending) -> 7G (agentless, blocked)
 - Total pending tasks reduced from 169 to ~157 after Lansweeper removal
+
+---
+
+## Session: 2026-03-09 (Windows)
+
+### Completed
+
+**Requirements gap analysis against team's monitoring platform requirements list**
+- Performed full gap analysis mapping team requirements (provided as annotated screenshot) against current PoC capabilities
+- Created `docs/REQUIREMENTS_RESPONSE.md` (915 lines): line-by-line requirement responses, build-vs-buy analysis, gap closure strategy with effort estimates, 10 open questions for team decision
+- Identified 80-85% of requirements covered, 15-20% closable with 2-3 weeks of configuration work
+- Incorporated user's position annotations: cloud-only not viable (WAN dependency for resort operations), distributed model required with local polling, audit logging granularity needs team definition
+
+**Build vs buy analysis with existing vendor context**
+- LogicMonitor already licensed for SQL monitoring -- investigation needed on licensing model and expansion potential (Q1 in response doc)
+- Datadog already used by data/dev teams -- recommended boundary: Datadog = cloud/app, Grafana stack = infrastructure
+- Estimated vendor cost at scale: $180K-540K/year vs zero licensing for internal build
+- Documented gap closure strategy: 8 practical alternatives to vendor features, total 10-14 days effort
+
+**Phase 9: Requirements Gap Closure planned and added to PROJECT_PLAN.md**
+- 42 tasks across 8 groups (A through H)
+- Group A: Agentless probing (ICMP, TCP, UDP, HTTP synthetic) -- 1 day
+- Group B: File/folder size + process monitoring -- 1 day
+- Group C: Dashboard forecasting + SLA -- 1.5 days
+- Group D: Alert deduplication enhancement (mass-outage detection) -- 1.5 days
+- Group E: Maintenance window tooling -- 1 day
+- Group F: SNMP trap ingestion pipeline -- 2 days
+- Group G: Audit logging pipeline -- 1.5 days
+- Group H: Validation and documentation -- 1 day
+- PROJECT_PLAN.md bumped to v2.0
+
+**Alert deduplication requirements framing**
+- Added clarifying question for team: is alert grouping acceptable or is full topology-aware dedup an absolute requirement?
+- Documented cost implication: this single decision is the strongest justification for/against paid platform licensing
+- If grouping is acceptable, the build-vs-buy case closes decisively in favor of internal build
+
+**Grafana Cloud evaluation discussion**
+- Team member (Mark) working on Grafana Cloud trial instance for PSU
+- Spencer also exploring Grafana Cloud -- pricing better than full paid stack (LogicMonitor/Datadog)
+- NKP/Kubernetes slowing down -- large undertaking without business cases to justify FTE
+- Analysis: 90%+ of configs (Alloy agents, dashboards, alert rules, recording rules) transfer directly to Grafana Cloud by changing endpoint URLs
+- Key tension: cloud-only WAN resilience concern still applies to Grafana Cloud
+- Conclusion: keep building the full solution as a portable configuration library. Fork-and-deploy model supports any backend (self-hosted, Grafana Cloud, hybrid)
+
+**Pulled and merged MacBook commit (fast-forward)**
+- Commit `6c509ee`: Lansweeper dropped (Phase 7D), Nutanix NKP platform context added
+- Clean fast-forward merge, no conflicts
+
+### In Progress
+- None. All session work committed and pushed.
+
+### Blockers
+- **NKP/Kubernetes**: Team reports NKP is a large undertaking for prod-ready deployment without business cases to justify FTE. Pausing K8s focus. Does not block config development.
+- **Phase 8 RBAC**: Still blocked on human actions (AD groups, LDAP credentials). Unchanged.
+- **Requirements lock**: Team requirements list is under review. 10 open questions (Q1-Q10) need team answers before locking.
+
+### Decisions
+- **Keep building the full solution**: The repo is a portable configuration library. Configs transfer to any backend (self-hosted Prometheus, Grafana Cloud Mimir, hybrid). Fork-and-deploy model means deployers pick what they need and drop the rest.
+- **Grafana Cloud is a valid deployment target, not a replacement**: Changing Alloy remote_write endpoints is the only migration step. Dashboards, alert rules, recording rules import directly. Helm chart becomes unnecessary for Cloud deployments but stays in repo for self-hosted.
+- **PagerDuty recommended as want, not need**: Teams webhook + email sufficient for current operational maturity. Escalation platform addable via config change when needed.
+- **Alert dedup framed as cost decision**: Group alert grouping vs full topology-aware dedup is the single biggest factor in build-vs-buy. Framed for team review with explicit cost implication.
+- **Phase 9 scoped to closable gaps only**: No dependency on team decisions. All 42 tasks are configuration work with no human action prerequisites.
+
+### Next Session
+1. **Pull latest** on MacBook: `git pull origin master` (commit `f36595e`)
+2. **Phase 9 execution**: Begin Group A (agentless probing) + Group B (file/process monitoring) -- all additive new files, zero risk
+3. **Or Phase 5.7**: Fleet tagging and Ansible deployment if fleet metadata is ready
+4. **Share REQUIREMENTS_RESPONSE.md** with team for review -- 10 open questions need answers
+5. **Linux focus**: User mentioned focusing on Linux work for the next week or two
+
+### Context
+- Development switching back to macOS (MacBook)
+- MacBook working directory: `/Users/et/Development/Monitoring_Dashboarding-master`
+- MacBook commit method: `python3 skills/git_smart_commit.py commit-and-push "message"`
+- Windows commit method: `C:/Users/etamez/AppData/Local/Programs/Python/Python314/python.exe skills/git_smart_commit.py commit-and-push "message"`
+- PROJECT_PLAN.md is at version 2.0 with Phase 9 added (42 tasks)
+- REQUIREMENTS_RESPONSE.md is ready for team review (10 open questions, gap closure strategy, build-vs-buy analysis)
+- Team is exploring Grafana Cloud as potential backend -- does not change config development work
+- Existing vendors in org: LogicMonitor (SQL monitoring, licensing unknown), Datadog (data/dev teams)
