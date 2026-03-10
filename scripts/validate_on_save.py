@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-Lightweight config validation hook for PostToolUse.
+Lightweight config validation hook.
 
-Runs automatically after Claude writes or edits a file. Performs fast syntax
-checks only -- deep semantic validation is handled by sub-agents during
-the /commit workflow.
+Runs automatically via git hooks or editor integration. Performs fast syntax
+checks only -- deep semantic validation is handled by validate_all.py.
 
 Exit codes:
     0 -- Validation passed (or file type not applicable)
@@ -53,7 +52,6 @@ def check_no_hardcoded_secrets(filepath: Path) -> tuple[bool, str]:
     """Scan for common patterns that suggest hardcoded secrets.
 
     This is a fast heuristic check, not a comprehensive secret scanner.
-    The pre-commit-check sub-agent performs deeper analysis during /commit.
     """
     secret_patterns = [
         "password:",

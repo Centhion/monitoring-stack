@@ -96,15 +96,12 @@ Known safe terms that look org-specific but are not:
 
 ---
 
-## For AI Agents
-
-If you are a Claude Code agent, Cursor, Windsurf, or similar:
+## For Contributors
 
 1. **Check which branch you are on** before making changes: `git branch --show-current`
 2. **All new feature work goes on `master`** with generic placeholders
-3. **Never put real org data on `master`** -- if you are unsure, ask the user
+3. **Never put real org data on `master`** -- if you are unsure, ask
 4. **The `internal` branch does not exist yet** -- it will be created when production deployment begins
-5. See `.claude/CLAUDE.md` "Branch Model" section for the full rules
 
 ---
 

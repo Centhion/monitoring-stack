@@ -48,11 +48,8 @@
 - [x] Create README.md with project overview
 - [x] Create ARCHITECTURE.md with stack details and data flow
 - [x] Create project directory structure (configs/, dashboards/, alerts/, scripts/)
-- [x] Create project-specific agents (config-validator, dashboard-reviewer, alert-rule-auditor)
-- [x] Update .claude/settings.json with project permissions
 - [x] Create .env.example with required environment variables
-- [x] Clean up template artifacts (remove onboarding protocol from CLAUDE.md)
-- [x] Add PostToolUse hooks for automatic config validation
+- [x] Add git hooks for automatic config validation
 - [x] Create scripts/validate_on_save.py for hook-based validation
 - [x] Initialize Git repository with remote configured
 
@@ -514,7 +511,7 @@
   - Added `deploy/helm/monitoring-stack/charts/` for Helm dependencies
   - Added `inventory/generated/` for fleet inventory output
   - Added `*.tgz` for Helm packaged charts
-  - Verified .env, CLAUDE.local.md, and settings.local.json are gitignored
+  - Verified .env and other sensitive files are gitignored
   - Updated `.dockerignore` with deploy/helm/ and inventory/ exclusions
   - Complexity: Simple
 

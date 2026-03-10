@@ -491,6 +491,5 @@ These values must never be committed to Git in plain text:
 
 The repository includes:
 - `.gitignore` rules blocking `.env`, `*.key`, `*.pem`, and credential files
-- `.claude/settings.json` deny rules preventing agent access to secret files
 - Pre-commit scan that flags potential hardcoded secrets before every commit
 - Validator warning for the `changeme` placeholder (reminds you to replace it)

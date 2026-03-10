@@ -151,7 +151,7 @@ When writing PromQL or LogQL queries for dashboards, always filter by these labe
 5. Set the `gridPos` to position the panel (x: 0-23 column, y: row position, w: width 1-24, h: height).
 6. Configure the `targets` array with your PromQL or LogQL query.
 7. Validate the JSON: `python scripts/validate_dashboards.py` (once Phase 5 tooling is built).
-8. Commit via the `/commit` workflow.
+8. Commit the changes.
 
 Example panel structure:
 
@@ -324,7 +324,7 @@ If you modified a recording rule name in `configs/prometheus/recording_rules.yml
 
 1. Edit the dashboard JSON file in your editor.
 2. Validate: `python scripts/validate_dashboards.py` (Phase 5).
-3. Commit via `/commit` workflow (triggers dashboard-reviewer agent).
+3. Commit the changes.
 4. Deploy to Grafana by updating the mounted volume or restarting the pod.
 5. Verify in the Grafana UI that panels render correctly.
 

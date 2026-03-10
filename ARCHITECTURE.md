@@ -61,15 +61,6 @@ This document outlines the architecture and design decisions for the Enterprise 
 
 ```
 Monitoring_Dashboarding/
-+-- .claude/                     # Agent configuration
-|   +-- CLAUDE.md               # Main instructions and rules
-|   +-- settings.json           # Permissions and hooks
-|   +-- commands/               # Slash command definitions
-|   +-- agents/                 # Sub-agent prompts
-|   |   +-- general/            # Universal agents (security, pre-commit, etc.)
-|   |   +-- project/            # Project-specific agents (config-validator, etc.)
-|   +-- skills/                 # Skill definitions
-|   +-- rules/                  # Modular guidelines
 +-- configs/                     # All service configurations
 |   +-- alloy/                  # Grafana Alloy agent configs
 |   |   +-- common/             # Shared components (labels, remote_write, loki_push)
@@ -104,7 +95,7 @@ Monitoring_Dashboarding/
 |   +-- validate_prometheus.py # Prometheus/Alertmanager YAML validator
 |   +-- validate_dashboards.py # Grafana dashboard JSON validator
 |   +-- validate_all.py        # Unified validation runner
-|   +-- validate_on_save.py    # PostToolUse hook for fast syntax checks
+|   +-- validate_on_save.py    # Fast syntax checks for git hooks or editor integration
 |   +-- maintenance_window.py  # Grafana mute timing API helper (create/list/delete)
 |   +-- fleet_inventory.py    # Inventory management (validate, report, import CSV)
 |   +-- validate_fleet_tags.py # Tag compliance audit against Prometheus
@@ -117,7 +108,6 @@ Monitoring_Dashboarding/
 +-- ansible/                     # Deployment automation
 |   +-- deploy_alloy.yml      # Ansible playbook for Alloy agent deployment
 |   +-- inventory.yml          # Ansible inventory template
-+-- skills/                      # Universal helper scripts
 +-- docs/                        # Documentation
 |   +-- PROJECT_PLAN.md         # Task tracking (single source of truth)
 |   +-- ALLOY_DEPLOYMENT.md    # Alloy agent deployment guide
@@ -261,7 +251,7 @@ The dashboards in this repo use `datacenter` as a template variable. When a site
 | Loki over Elasticsearch | Lower operational cost for log aggregation. Label-indexed approach sufficient for server monitoring. Native Grafana integration. | 2026-02-17 |
 | Configuration-as-code approach | All configs version-controlled for auditability, reproducibility, and team collaboration. Enterprise requirement. | 2026-02-17 |
 | Python for tooling | Widely available, good library ecosystem for YAML/JSON validation, team familiarity. | 2026-02-17 |
-| Teams webhook over MCP integration | Simple HTTP webhook is sufficient for alert notifications. No external dependency or MCP server needed. | 2026-02-17 |
+| Teams webhook over complex integrations | Simple HTTP webhook is sufficient for alert notifications. No external dependency needed. | 2026-02-17 |
 | Hub-and-spoke dashboard architecture | Enterprise NOC (multi-site grid) and Site Overview (per-site drill-down) provide location-centric navigation. Template variables propagate between dashboards via URL params. Sites auto-populate from `datacenter` label -- no dashboard changes needed to add sites. | 2026-03-06 |
 | Site recording rules layer | Pre-aggregate instance metrics to datacenter level (`site:*` namespace) so hub dashboards query cheap pre-computed series instead of scanning all instances. | 2026-03-06 |
 | Two-tier Alloy deployment model | Tier 1: Alloy Agent installed per server (push-based, deployed via SCCM/Ansible). Tier 2: Alloy Site Gateway container per site (pull-based, polls SNMP/certs/hardware). Separates agent-based from gateway-based monitoring cleanly. | 2026-03-07 |

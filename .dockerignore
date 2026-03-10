@@ -5,10 +5,8 @@ configs/alloy/
 deploy/helm/
 
 # Development and CI files
-.claude/
 .git/
 .gitignore
-skills/
 tests/
 scripts/
 docs/

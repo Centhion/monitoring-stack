@@ -210,7 +210,7 @@ jobs:
 
 ### Pre-Commit Hook
 
-The `scripts/validate_on_save.py` script runs automatically via Claude Code's PostToolUse hook for fast syntax checks during development. The full validators (`validate_all.py`) provide deeper semantic validation during the commit workflow and CI.
+The `scripts/validate_on_save.py` script runs automatically via git hooks or editor integration for fast syntax checks during development. The full validators (`validate_all.py`) provide deeper semantic validation before committing and in CI.
 
 ---
 

@@ -51,8 +51,6 @@ python scripts/poc_setup.py
 | `ansible/` | Ansible playbook for Alloy agent deployment across fleets |
 | `scripts/` | Python tooling for config validation, fleet management, RBAC, and testing |
 | `docs/` | Architecture docs, runbooks, and project tracking |
-| `.claude/` | Agent configuration (instructions, skills, agents, rules, commands) |
-| `skills/` | Universal helper scripts (Python) |
 
 ## Features
 
@@ -127,19 +125,11 @@ All dashboards include a cross-navigation link bar. Template variables (`environ
 - See `docs/RBAC_GUIDE.md` for Grafana RBAC and LDAP/AD integration
 - See `docs/DEPLOYMENT_VALUES.md` for production configuration value reference
 - See `docs/BRANCHING_STRATEGY.md` for public template vs internal fork branch model
-- See `docs/TESTING_CHECKLIST.md` for post-deployment validation checklist
-
 ## Development
 
-This project uses Claude Code with the following commands:
-
-| Command | Description |
-|---------|-------------|
-| `/setup` | Initial project configuration |
-| `/status` | Show Git state and active tasks |
-| `/commit` | Generate a commit message |
-| `/plan` | Design implementation approach |
-| `/handoff` | Generate session summary |
+- Validate configs before committing: `python scripts/validate_all.py --strict`
+- Run tests: `python -m pytest tests/test_validators.py -v`
+- See `docs/VALIDATION_TOOLING.md` for validator details and CI integration
 
 ## License
 
